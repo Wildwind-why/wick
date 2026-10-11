@@ -32,7 +32,7 @@ DIRS = [
     "ai-logs",
 ]
 ROOT_FILES = ["index.html", "sw.js", "manifest.webmanifest", "LICENSE"]
-DOC_FILES = ["README.md", "AI_USAGE.md", "CREDITS.md", "DEMO.md", "HANDOFF.md"]
+DOC_FILES = ["README.md", "CONTRIBUTING.md", "AI_USAGE.md", "CREDITS.md", "DEMO.md", "HANDOFF.md"]
 
 SKIP_NAMES = {".DS_Store", "Thumbs.db"}
 SKIP_SUFFIX = (".pyc", ".bak", ".orig", ".swp")
