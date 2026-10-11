@@ -88,6 +88,7 @@ export async function initOffline() {
     reportWorkerState(CAPTURE ? 60000 : 6000).then((state) => {
       const KEY = {
         active: "c4.sw.active",     // registered, in scope, and the whole shell is in the cache
+        registered: "c4.sw.registered", // registered and in scope, but the worker never answered
         partial: "c4.sw.partial",   // registered, but the cache is incomplete or something failed
         absent: "c4.sw.absent",     // nothing registered here yet
         unsupported: "c4.sw.none",  // this context cannot host a worker at all
@@ -290,8 +291,12 @@ async function reportWorkerState(timeoutMs = 6000) {
   // for a longer deadline; the default stays tight for real users.
   const attempts = timeoutMs >= 20000 ? 20 : 6;
   const messageTimeout = timeoutMs >= 20000 ? 5000 : 2000;
+  // Bound the whole exchange by wall-clock time, not by attempt count: the
+  // useful work is "keep asking until the worker answers", and the answer is
+  // either a report or the deadline.
+  const deadline = performance.now() + timeoutMs;
   let report = null;
-  for (let attempt = 0; attempt < attempts; attempt += 1) {
+  for (let attempt = 0; attempt < attempts && performance.now() < deadline; attempt += 1) {
     let installing = false;
     try {
       const live = await navigator.serviceWorker.getRegistration().catch(() => null);
@@ -310,10 +315,17 @@ async function reportWorkerState(timeoutMs = 6000) {
     } catch {
       report = null;
     }
-    const complete = !!(report && report.total && report.cached === report.total);
-    if (complete) break;
-    if (!report && !installing) break; // nothing to wait for
-    if (report && !installing) break; // settled, and short — that is the answer
+    if (report && report.total) {
+      if (report.cached === report.total) break; // complete — that is the verdict
+      if (report.failed && report.failed.length) break; // a failure is a verdict
+      if (!installing) break; // settled and short — that is the answer
+      // else: still installing, so keep waiting.
+    }
+    // Silence is NOT a verdict. A worker that has not started yet simply never
+    // answers, and a message that arrives while it is still filling its cache
+    // can be dropped. Reporting "registered" on the first unanswered message
+    // was a race: on a fresh profile it made the panel understate a shell that
+    // was, in fact, fully cached. Keep asking until the deadline instead.
     await new Promise((resolve) => setTimeout(resolve, 700));
   }
 
