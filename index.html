@@ -1,0 +1,858 @@
+<!doctype html>
+<html lang="en" data-mode="full" data-lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title data-i18n="meta.title">wick — communication for the last 1%</title>
+<meta name="description" content="An offline-first radio messenger that treats every byte, every joule and every second of signal as a budget." />
+<meta name="theme-color" content="#040406" />
+<meta name="color-scheme" content="dark" />
+<meta name="author" content="wick" />
+<link rel="manifest" href="manifest.webmanifest" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2308080b'/%3E%3Crect x='14' y='6' width='4' height='20' rx='2' fill='%23ff7a33'/%3E%3C/svg%3E" />
+
+<script>
+  /* Decide the budget before the first paint: 1% mode never requests a font. */
+  (function () {
+    var mode = "full";
+    /* Chinese-locale visitors land on Chinese; everyone else on English. */
+    var lang = (navigator.language || "en").toLowerCase().indexOf("zh") === 0 ? "zh" : "en";
+    var params = new URLSearchParams(location.search);
+    try {
+      mode = JSON.parse(localStorage.getItem("wick:mode") || '"full"');
+      lang = JSON.parse(localStorage.getItem("wick:lang") || JSON.stringify(lang));
+    } catch (e) { /* storage is optional */ }
+    /* Deep links: ?mode=eco&lang=zh&still=1 — used by the demo and the shots. */
+    if (params.get("mode") === "eco") mode = "eco";
+    if (params.get("mode") === "full") mode = "full";
+    if (params.get("lang") === "zh" || params.get("lang") === "en") lang = params.get("lang");
+    var root = document.documentElement;
+    root.classList.add("js");
+    if (params.get("still") === "1") root.dataset.still = "1";
+    root.dataset.mode = mode === "eco" ? "eco" : "full";
+    root.dataset.lang = lang === "zh" ? "zh" : "en";
+    root.lang = lang === "zh" ? "zh-CN" : "en";
+    if (mode !== "eco") {
+      var link = document.createElement("link");
+      link.rel = "stylesheet";
+      link.href = "assets/css/fonts.css";
+      document.head.appendChild(link);
+    }
+    if (!("IntersectionObserver" in window)) root.dataset.io = "off";
+  })();
+</script>
+
+<link rel="stylesheet" href="assets/css/tokens.css" />
+<link rel="stylesheet" href="assets/css/base.css" />
+<link rel="stylesheet" href="assets/css/app.css" />
+<link rel="stylesheet" href="assets/css/motion.css" />
+</head>
+<body>
+
+<a class="skip" href="#main" data-i18n="skip">Skip to content</a>
+<div class="grain" aria-hidden="true"></div>
+
+<!-- icon sprite: no icon font, no network request -->
+<svg class="sprite" aria-hidden="true" focusable="false" width="0" height="0">
+  <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h13m0 0-5-5m5 5-5 5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 13 4.5 4.5L19 7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M7 7l10 10M17 7 7 17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
+  <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 2 4.5 13.5H11L10 22l8.5-11.5H12z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></symbol>
+  <symbol id="i-radio" viewBox="0 0 24 24"><path d="M12 13.5a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Z" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M7.5 7.5a6.4 6.4 0 0 0 0 9m9-9a6.4 6.4 0 0 1 0 9M4.6 4.6a10.5 10.5 0 0 0 0 14.8m14.8-14.8a10.5 10.5 0 0 1 0 14.8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></symbol>
+  <symbol id="i-offline" viewBox="0 0 24 24"><path d="M3 3l18 18M8.5 8.6A10.6 10.6 0 0 1 21 12a15 15 0 0 1-3.4 4M12 19.5h.01" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M6.2 6.6A15.3 15.3 0 0 0 3 12a15.6 15.6 0 0 0 4.6 4.4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></symbol>
+  <symbol id="i-store" viewBox="0 0 24 24"><path d="M4 7c0-1.7 3.6-3 8-3s8 1.3 8 3-3.6 3-8 3-8-1.3-8-3Z" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M4 7v10c0 1.7 3.6 3 8 3s8-1.3 8-3V7M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3" fill="none" stroke="currentColor" stroke-width="1.5"/></symbol>
+  <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M3 12h18M12 3c2.6 3 2.6 15 0 18M12 3c-2.6 3-2.6 15 0 18" fill="none" stroke="currentColor" stroke-width="1.3"/></symbol>
+  <symbol id="i-send" viewBox="0 0 24 24"><path d="M4.5 12 20 4.5 15.5 20l-4-6.5z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M5 7h14M10 7V5h4v2m-6 0 .7 12h6.6L17 7" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect x="4.5" y="10.5" width="15" height="9.5" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="12" cy="15.2" r="1.2" fill="currentColor"/></symbol>
+  <symbol id="i-share" viewBox="0 0 24 24"><path d="M12 15.5V4m0 0L8.2 7.8M12 4l3.8 3.8" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 14v4.5A1.5 1.5 0 0 0 6.5 20h11a1.5 1.5 0 0 0 1.5-1.5V14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 4.8 19 12 7 19.2z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></symbol>
+  <symbol id="i-table" viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="15" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M3.5 9.5h17M9.5 9.5v10M3.5 14.5h17" fill="none" stroke="currentColor" stroke-width="1.3"/></symbol>
+</svg>
+
+<header class="topbar" id="topbar">
+  <a class="brand" href="#top" aria-label="wick">
+    <span class="brand__wick" aria-hidden="true"></span>
+    <span>wick</span>
+  </a>
+  <span class="brand__sub" data-i18n="brand.sub">1% Battery</span>
+
+  <nav class="topnav" aria-label="Sections">
+    <a href="#cost" data-i18n="nav.story">Cost</a>
+    <a href="#codec" data-i18n="nav.codec">Codec</a>
+    <a href="#budget" data-i18n="nav.budget">Budget</a>
+    <a href="#offline" data-i18n="nav.offline">Offline</a>
+    <a href="#field" data-i18n="nav.field">Field</a>
+    <a href="#impact" data-i18n="nav.impact">Impact</a>
+    <a href="#craft" data-i18n="nav.craft">Craft</a>
+  </nav>
+
+  <span class="topbar__spacer"></span>
+
+  <div class="topbar__tools">
+    <div class="telemetry" role="status" aria-live="off">
+      <span class="telemetry__item" title="Live network state of this browser">
+        <span class="dot" id="tel-dot" data-state="ok"></span>
+        <span id="tel-link" data-i18n="tel.online">online</span>
+      </span>
+      <span class="telemetry__item" aria-hidden="true">
+        <span class="batt" id="tel-batt" style="--level:100%"><i></i></span>
+        <b id="tel-charge">100%</b>
+      </span>
+      <span class="telemetry__item" title="Bytes this page has already not sent">
+        <span data-i18n="tel.saved">bytes saved</span>
+        <b id="tel-saved">0</b>
+      </span>
+      <span class="telemetry__item telemetry__item--frame" title="Median frame time of this page">
+        <span data-i18n="tel.frame">frame</span>
+        <b id="tel-frame">–</b>
+      </span>
+    </div>
+
+    <button class="eco" id="eco-toggle" type="button" aria-pressed="false" data-i18n-attr="aria-label:eco.title,title:eco.title">
+      <span class="eco__track" aria-hidden="true"><i></i></span>
+      <span data-i18n="eco.label">1% mode</span>
+    </button>
+
+    <button class="iconbtn" id="lang-toggle" type="button" data-i18n-attr="aria-label:lang.title,title:lang.title">
+      <svg width="15" height="15" aria-hidden="true"><use href="#i-globe"/></svg>
+      <span class="visually-hidden">Language</span>
+    </button>
+
+    <button class="iconbtn" id="demo-toggle" type="button" aria-pressed="false" data-i18n-attr="aria-label:demo.title,title:demo.title">
+      <svg width="15" height="15" aria-hidden="true"><use href="#i-play"/></svg>
+      <span class="visually-hidden" data-i18n="demo.title">Guided demo</span>
+    </button>
+  </div>
+</header>
+
+<!-- the guided demo: a walkthrough a visitor can follow without a script -->
+<aside class="tour" id="tour" hidden aria-live="polite">
+  <div class="tour__head">
+    <span class="tour__step mono" id="tour-count">1 / 7</span>
+    <span class="tour__title" data-i18n="tour.title">…</span>
+  </div>
+  <p class="tour__body" id="tour-body">…</p>
+  <div class="tour__actions">
+    <button class="btn btn--sm" type="button" id="tour-prev" data-i18n="tour.prev">…</button>
+    <button class="btn btn--ember btn--sm" type="button" id="tour-next" data-i18n="tour.next">…</button>
+    <button class="btn btn--sm" type="button" id="tour-exit" data-i18n="tour.exit">…</button>
+  </div>
+</aside>
+
+<!-- the page's own charge, draining as you descend -->
+<div class="rail" aria-hidden="true">
+  <span class="rail__fill" id="rail-fill"></span>
+  <span class="rail__tick" style="top:0"></span>
+  <span class="rail__tick" style="top:25%"></span>
+  <span class="rail__tick" style="top:50%"></span>
+  <span class="rail__tick" style="top:75%"></span>
+  <span class="rail__tick" style="top:100%"></span>
+  <span class="rail__label" id="rail-label" style="top:0">100%</span>
+</div>
+
+<main id="main">
+
+<!-- ===================================================================== -->
+<!-- HERO                                                                   -->
+<!-- ===================================================================== -->
+<section class="hero" id="top">
+  <div class="hero__glow" aria-hidden="true"></div>
+  <div class="wrap hero__grid">
+    <div class="hero__copy">
+      <p class="eyebrow" data-reveal data-i18n="hero.eyebrow">1% Battery · Engineering &amp; Social Impact</p>
+      <h1 class="hero__display" data-reveal>
+        <span class="hero__num">1<span class="hero__pct">%</span></span>
+        <span class="hero__q" data-i18n="hero.q">How far can 1% go?</span>
+      </h1>
+      <p class="hero__title" data-reveal data-i18n="hero.title">Communication for when almost nothing is left.</p>
+      <p class="hero__lead" data-reveal data-i18n="hero.lead">…</p>
+      <div class="hero__cta" data-reveal>
+        <a class="btn btn--ember" href="#codec">
+          <span class="btn__dot" aria-hidden="true"></span>
+          <span data-i18n="hero.cta1">Open the codec bench</span>
+          <svg width="14" height="14" aria-hidden="true"><use href="#i-arrow"/></svg>
+        </a>
+        <button class="btn" type="button" data-eco-invite>
+          <svg width="14" height="14" aria-hidden="true"><use href="#i-bolt"/></svg>
+          <span data-i18n="hero.cta2">Turn on 1% mode</span>
+        </button>
+      </div>
+      <p class="hero__note" data-reveal data-i18n="hero.note">…</p>
+    </div>
+
+    <div class="hero__aside">
+      <div class="ember-card" data-reveal>
+        <canvas id="hero-ember" width="520" height="360" aria-hidden="true"></canvas>
+        <div class="ember-card__readout">
+          <div class="readout">
+            <span class="readout__k" data-i18n="stat.bytes.k">bytes per check-in</span>
+            <span class="readout__v"><span id="hero-bytes">9</span><small>B</small></span>
+          </div>
+          <div class="readout">
+            <span class="readout__k" data-i18n="stat.msgs.k">check-ins on 1% of a phone</span>
+            <span class="readout__v"><span id="hero-msgs">193</span></span>
+          </div>
+        </div>
+      </div>
+
+      <dl class="stats" data-reveal>
+        <div class="stats__item">
+          <dt data-i18n="stat.net.k">network required</dt>
+          <dd data-i18n="stat.net.v">none</dd>
+        </div>
+        <div class="stats__item">
+          <dt data-i18n="stat.deps.k">runtime dependencies</dt>
+          <dd data-i18n="stat.deps.v">0</dd>
+        </div>
+        <div class="stats__item">
+          <dt data-i18n="c5.uptime">link available</dt>
+          <dd id="hero-uptime">28%</dd>
+        </div>
+      </dl>
+    </div>
+  </div>
+
+  <a class="hero__scroll" href="#cost" aria-hidden="true" tabindex="-1">
+    <span data-i18n="hero.scroll">Scroll to spend the charge</span>
+    <svg width="13" height="13"><use href="#i-chevron"/></svg>
+  </a>
+</section>
+
+<!-- ===================================================================== -->
+<!-- 01 · COST                                                              -->
+<!-- ===================================================================== -->
+<section class="section" id="cost" aria-labelledby="cost-title">
+  <div class="wrap">
+    <header class="section__head">
+      <span class="section__index" data-i18n="c1.idx" data-reveal>01 — the problem</span>
+      <h2 class="section__title" id="cost-title" data-reveal data-i18n="c1.title">A sentence should not cost a connection.</h2>
+      <p class="section__lead" data-reveal data-i18n="c1.lead">…</p>
+    </header>
+
+    <div class="anatomy-wrap" data-reveal>
+      <div class="anatomy-row">
+        <div class="anatomy-row__head">
+          <span class="anatomy-row__name" data-i18n="c1.naive">A mainstream messenger</span>
+          <span class="anatomy-row__val mono"><span id="cost-naive-total">354</span> B</span>
+        </div>
+        <div class="anatomy anatomy--naive" id="anatomy-naive" aria-hidden="true"></div>
+      </div>
+
+      <div class="anatomy-row">
+        <div class="anatomy-row__head">
+          <span class="anatomy-row__name anatomy-row__name--wick" data-i18n="c1.wick">wick</span>
+          <span class="anatomy-row__val mono"><span id="cost-wick-total">6</span> B</span>
+        </div>
+        <div class="anatomy anatomy--wick" id="anatomy-wick" aria-hidden="true"></div>
+      </div>
+
+      <ul class="legend" id="cost-legend"></ul>
+    </div>
+
+    <div class="cost-controls" data-reveal>
+      <label class="control" for="cost-batch">
+        <span class="control__k">
+          <span data-i18n="c1.batch">Messages waiting in the outbox</span>
+          <output class="control__v mono" id="cost-batch-val">1</output>
+        </span>
+        <input class="range" id="cost-batch" type="range" min="1" max="40" step="1" value="8" />
+      </label>
+      <div class="cost-figures">
+        <div class="readout">
+          <span class="readout__k" data-i18n="c1.permsg">per message</span>
+          <span class="readout__v mono"><span id="cost-wick-per">6</span><small>B wick</small></span>
+          <span class="readout__sub mono">vs <span id="cost-naive-per">354</span> B</span>
+        </div>
+        <div class="readout">
+          <span class="readout__k" data-i18n="c1.total">whole outbox</span>
+          <span class="readout__v mono"><span id="cost-wick-all">6</span><small>B wick</small></span>
+          <span class="readout__sub mono">vs <span id="cost-naive-all">354</span> B</span>
+        </div>
+        <div class="readout">
+          <span class="readout__k">ratio</span>
+          <span class="readout__v mono" id="cost-ratio">59×</span>
+          <span class="readout__sub mono" id="cost-transmissions">1 transmission</span>
+        </div>
+      </div>
+      <p class="hint" data-i18n="c1.batch.hint">…</p>
+      <p class="hint" id="cost-raw-note"></p>
+    </div>
+
+    <p class="takeaway" data-reveal data-i18n="c1.take">…</p>
+  </div>
+</section>
+
+<!-- ===================================================================== -->
+<!-- 02 · CODEC                                                             -->
+<!-- ===================================================================== -->
+<section class="section" id="codec" aria-labelledby="codec-title">
+  <div class="wrap">
+    <header class="section__head">
+      <span class="section__index" data-reveal data-i18n="c2.idx">02 — the codec</span>
+      <h2 class="section__title" id="codec-title" data-reveal data-i18n="c2.title">Every word you need, in one byte.</h2>
+      <p class="section__lead" data-reveal data-i18n="c2.lead">…</p>
+    </header>
+
+    <div class="bench" data-reveal>
+      <!-- compose -->
+      <div class="panel bench__compose">
+        <div class="panel__head">
+          <span class="panel__title" data-i18n="c2.compose">Compose</span>
+          <span class="panel__tag mono" id="bench-type-tag">checkin</span>
+        </div>
+        <div class="panel__body">
+          <div class="field">
+            <span class="field__k" data-i18n="c2.presets">Try</span>
+            <div class="chips" id="bench-presets" role="group" aria-label="Presets"></div>
+          </div>
+
+          <div class="field">
+            <span class="field__k" data-i18n="c2.type">Message type</span>
+            <div class="seg" id="bench-types" role="group" aria-label="Message type"></div>
+          </div>
+
+          <div class="field" id="bench-status-field">
+            <label class="field__k" for="bench-status" data-i18n="c2.status">Status</label>
+            <select class="select" id="bench-status"></select>
+          </div>
+
+          <div class="field" id="bench-need-field" hidden>
+            <label class="field__k" for="bench-need" data-i18n="c2.need">Resource needed</label>
+            <select class="select" id="bench-need"></select>
+          </div>
+
+          <div class="field" id="bench-urgency-field" hidden>
+            <span class="field__k" data-i18n="c2.urgency">Urgency</span>
+            <div class="seg" id="bench-urgency" role="group" aria-label="Urgency"></div>
+          </div>
+
+          <div class="field" id="bench-text-field" hidden>
+            <label class="field__k" for="bench-text" data-i18n="c2.text">Free text</label>
+            <textarea class="input" id="bench-text" rows="2" maxlength="90" data-i18n-placeholder="c2.text.placeholder"></textarea>
+          </div>
+
+          <div class="field field--row">
+            <label class="switch">
+              <input type="checkbox" id="bench-pos" checked />
+              <span class="switch__track" aria-hidden="true"><i></i></span>
+              <span class="switch__label" data-i18n="c2.pos">Include position fix</span>
+            </label>
+            <label class="switch">
+              <input type="checkbox" id="bench-time" checked />
+              <span class="switch__track" aria-hidden="true"><i></i></span>
+              <span class="switch__label" data-i18n="c2.time">Include timestamp</span>
+            </label>
+          </div>
+
+          <div class="field">
+            <div class="bench__actions">
+              <button class="btn" type="button" id="bench-burst">
+                <svg width="14" height="14" aria-hidden="true"><use href="#i-bolt"/></svg>
+                <span data-i18n="c2.burst">Encode 20 000 frames</span>
+              </button>
+              <span class="hint hint--inline mono" id="bench-burst-out"></span>
+            </div>
+            <p class="hint" data-i18n="c2.worker">…</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- frame -->
+      <div class="panel bench__frame">
+        <div class="panel__head">
+          <span class="panel__title" data-i18n="c2.frame">Frame</span>
+          <span class="mono bench__size"><span id="bench-size">7</span> B · <span id="bench-bits">56</span> bit</span>
+        </div>
+        <div class="panel__body">
+          <div class="hexdump" id="bench-hex" aria-live="polite"></div>
+          <p class="hint" data-i18n="c2.frame.hint">…</p>
+          <ul class="legend legend--tight" id="bench-legend"></ul>
+        </div>
+      </div>
+
+      <!-- result -->
+      <div class="panel bench__result">
+        <div class="panel__head">
+          <span class="panel__title" data-i18n="c2.decoded">Decoded on the other side</span>
+          <span class="badge" id="bench-ok"><svg width="13" height="13" aria-hidden="true"><use href="#i-check"/></svg><span data-i18n="c2.ok">round-trip verified</span></span>
+        </div>
+        <div class="panel__body">
+          <p class="decoded mono" id="bench-decoded">—</p>
+          <p class="hint" data-i18n="c2.normalise">…</p>
+          <div class="bench__metrics" id="bench-metrics"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- sealed frame ----------------------------------------------------
+         The frame above is compact and readable by anyone holding the radio.
+         This panel prices the second layer that fixes that. -->
+    <div class="sealed" id="sealed">
+      <div class="panel">
+        <div class="panel__head">
+          <span class="panel__title" data-i18n="c2.seal.title">…</span>
+          <span class="panel__tag mono" data-i18n="c2.seal.alg">…</span>
+        </div>
+        <div class="panel__body">
+          <p class="hint" data-i18n="c2.seal.lead">…</p>
+
+          <div class="sealed__grid">
+            <div class="sealed__wire">
+              <span class="field__k" data-i18n="c2.seal.wire">…</span>
+              <div class="hexdump" id="seal-hex" aria-live="polite"></div>
+              <div class="bench__actions">
+                <button class="btn btn--ember" type="button" id="seal-run">
+                  <svg width="14" height="14" aria-hidden="true"><use href="#i-lock"/></svg>
+                  <span data-i18n="c2.seal.run">…</span>
+                </button>
+                <button class="btn" type="button" id="seal-tamper">
+                  <span data-i18n="c2.seal.tamper">…</span>
+                </button>
+                <button class="btn" type="button" id="seal-replay">
+                  <span data-i18n="c2.seal.replay">…</span>
+                </button>
+              </div>
+              <p class="sealed__out mono" id="seal-out" role="status" aria-live="polite"></p>
+            </div>
+            <div class="sealed__receipt">
+              <span class="field__k" data-i18n="c1.seal.total">…</span>
+              <ol class="legend legend--tight" id="seal-receipt"></ol>
+              <p class="sealed__counter mono" id="seal-counter"></p>
+            </div>
+          </div>
+
+          <p class="hint" data-i18n="c2.seal.note">…</p>
+          <p class="hint" data-i18n="c2.seal.hint">…</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================================================================== -->
+<!-- 03 · BUDGET                                                            -->
+<!-- ===================================================================== -->
+<section class="section" id="budget" aria-labelledby="budget-title">
+  <div class="wrap">
+    <header class="section__head">
+      <span class="section__index" data-reveal data-i18n="c3.idx">03 — the budget</span>
+      <h2 class="section__title" id="budget-title" data-reveal data-i18n="c3.title">1% is a budget, not a metaphor.</h2>
+      <p class="section__lead" data-reveal data-i18n="c3.lead">…</p>
+    </header>
+
+    <div class="lab" data-reveal>
+      <div class="panel lab__controls">
+        <div class="panel__head"><span class="panel__title" data-i18n="c3.radio">Radio</span></div>
+        <div class="panel__body">
+          <div class="field">
+            <span class="field__k" data-i18n="c3.resource">Energy store</span>
+            <div class="seg seg--wrap" id="lab-resources" role="group" aria-label="Energy store"></div>
+          </div>
+
+          <label class="control" for="lab-level">
+            <span class="control__k">
+              <span data-i18n="c3.level">Charge remaining</span>
+              <output class="control__v mono" id="lab-level-val">1%</output>
+            </span>
+            <input class="range range--ember" id="lab-level" type="range" min="1" max="100" step="1" value="1" />
+            <span class="control__scale mono"><span>1%</span><span>25%</span><span>50%</span><span>100%</span></span>
+          </label>
+
+          <div class="field">
+            <span class="field__k" data-i18n="c3.radio">Radio</span>
+            <div class="seg seg--wrap" id="lab-radios" role="group" aria-label="Radio"></div>
+          </div>
+
+          <label class="control" for="lab-batch">
+            <span class="control__k">
+              <span data-i18n="c3.batch">Outbox batch</span>
+              <output class="control__v mono" id="lab-batch-val">1</output>
+            </span>
+            <input class="range" id="lab-batch" type="range" min="1" max="40" step="1" value="1" />
+          </label>
+
+          <label class="switch switch--big">
+            <input type="checkbox" id="lab-eco" />
+            <span class="switch__track" aria-hidden="true"><i></i></span>
+            <span class="switch__label">
+              <b data-i18n="c3.eco">1% mode</b>
+              <em data-i18n="c3.eco.hint">Drop position, time and prose. Keep the fact.</em>
+            </span>
+          </label>
+        </div>
+      </div>
+
+      <div class="lab__readouts">
+        <div class="readout readout--hero">
+          <span class="readout__k" data-i18n="c3.msgs">messages still affordable</span>
+          <span class="readout__v"><span id="lab-msgs">268</span></span>
+          <span class="readout__sub mono" id="lab-msgs-note">wick · LTE</span>
+        </div>
+        <div class="readout readout--hero">
+          <span class="readout__k" data-i18n="c3.hours">time to empty</span>
+          <span class="readout__v" id="lab-hours">—</span>
+          <span class="readout__sub mono" id="lab-hours-note" data-i18n="c3.duty">at 6 messages / hour</span>
+        </div>
+        <div class="readout">
+          <span class="readout__k" data-i18n="c3.per">cost per message</span>
+          <span class="readout__v mono" id="lab-per">1.49 J</span>
+          <span class="readout__sub mono" id="lab-per-note"></span>
+        </div>
+        <div class="readout">
+          <span class="readout__k">wick vs baseline</span>
+          <span class="readout__v mono" id="lab-advantage">—</span>
+          <span class="readout__sub mono" id="lab-saved"></span>
+        </div>
+      </div>
+
+      <div class="panel lab__split">
+        <div class="panel__head"><span class="panel__title" data-i18n="c3.split">fixed wake-up vs per-byte</span></div>
+        <div class="panel__body">
+          <div class="splitbar" id="lab-split" aria-hidden="true">
+            <span class="splitbar__fixed" id="lab-split-fixed"></span>
+            <span class="splitbar__linear" id="lab-split-linear"></span>
+          </div>
+          <ul class="legend legend--tight" id="lab-split-legend"></ul>
+          <p class="hint" id="lab-radio-note"></p>
+        </div>
+      </div>
+
+      <div class="panel lab__rank">
+        <div class="panel__head">
+          <span class="panel__title" data-i18n="c3.rank">The same charge, on every radio</span>
+        </div>
+        <div class="panel__body">
+          <div class="rank" id="lab-rank"></div>
+          <p class="hint" data-i18n="c3.rank.note">…</p>
+          <p class="hint" data-i18n="c3.rank.note2">…</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="trim" data-reveal>
+      <h3 class="trim__title" data-i18n="c3.trim.title">What 1% mode gives up, and why</h3>
+      <p class="trim__note" data-i18n="c3.trim.note">…</p>
+      <ol class="trim__list" id="lab-trim"></ol>
+      <p class="trim__site">
+        <span data-i18n="c3.trim.site">…</span>
+        <button class="btn btn--sm" type="button" data-eco-invite>
+          <svg width="13" height="13" aria-hidden="true"><use href="#i-bolt"/></svg>
+          <span data-i18n="eco.label">1% mode</span>
+        </button>
+      </p>
+    </div>
+
+    <p class="hint hint--block" data-reveal data-i18n="c3.est">…</p>
+  </div>
+</section>
+
+<!-- ===================================================================== -->
+<!-- 04 · OFFLINE                                                           -->
+<!-- ===================================================================== -->
+<section class="section" id="offline" aria-labelledby="offline-title">
+  <div class="wrap">
+    <header class="section__head">
+      <span class="section__index" data-reveal data-i18n="c4.idx">04 — offline</span>
+      <h2 class="section__title" id="offline-title" data-reveal data-i18n="c4.title">Offline is not a failure state.</h2>
+      <p class="section__lead" data-reveal data-i18n="c4.lead">…</p>
+    </header>
+
+    <div class="offline" data-reveal>
+      <div class="device">
+        <div class="device__bar">
+          <span class="device__notch" aria-hidden="true"></span>
+          <span class="mono device__clock">wick</span>
+          <span class="device__right mono">
+            <span class="batt" id="dev-batt" style="--level:1%"><i></i></span>
+            <span id="dev-charge">1%</span>
+          </span>
+        </div>
+
+        <div class="device__link" id="dev-link" data-link="offline">
+          <span class="dot" data-state="crit"></span>
+          <span class="mono" id="dev-link-label">No link</span>
+          <span class="mono device__rtt" id="dev-rtt"></span>
+        </div>
+
+        <form class="device__compose" id="off-form">
+          <label class="visually-hidden" for="off-input" data-i18n="c4.compose">Compose</label>
+          <input class="input" id="off-input" type="text" maxlength="80" data-i18n-placeholder="c4.placeholder" autocomplete="off" />
+          <button class="btn btn--ember btn--sm" type="submit">
+            <svg width="13" height="13" aria-hidden="true"><use href="#i-send"/></svg>
+            <span data-i18n="c4.queue">Queue it</span>
+          </button>
+        </form>
+
+        <div class="device__list" id="off-list" role="log" aria-live="polite"></div>
+
+        <div class="device__foot mono">
+          <span><span data-i18n="c4.batched">transmission carried</span> <b id="off-carried">0</b> B</span>
+          <span id="off-count">0</span>
+        </div>
+      </div>
+
+      <div class="offline__side">
+        <div class="panel">
+          <div class="panel__head"><span class="panel__title" data-i18n="c4.link">Link</span></div>
+          <div class="panel__body">
+            <div class="seg seg--wrap" id="off-links" role="group" aria-label="Link"></div>
+            <div class="offline__actions">
+              <button class="btn" type="button" id="off-send">
+                <svg width="14" height="14" aria-hidden="true"><use href="#i-send"/></svg>
+                <span data-i18n="c4.send">Try to send</span>
+              </button>
+              <button class="btn" type="button" id="off-clear">
+                <svg width="14" height="14" aria-hidden="true"><use href="#i-trash"/></svg>
+                <span data-i18n="c4.clear">Clear outbox</span>
+              </button>
+            </div>
+            <p class="hint" id="off-hint" data-i18n="c4.nothing">…</p>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel__head"><span class="panel__title" data-i18n="c4.real">This is a real offline app</span></div>
+          <div class="panel__body">
+            <p class="body-sm" data-i18n="c4.real.body">…</p>
+            <ul class="statuslist">
+              <li><span class="statuslist__k" data-i18n="c4.sw">service worker</span><span class="statuslist__v mono" id="off-sw">—</span></li>
+              <li><span class="statuslist__k" data-i18n="c4.store">local store</span><span class="statuslist__v mono" id="off-store">—</span></li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================================================================== -->
+<!-- 05 · FIELD                                                             -->
+<!-- ===================================================================== -->
+<section class="section" id="field" aria-labelledby="field-title">
+  <div class="wrap">
+    <header class="section__head">
+      <span class="section__index" data-reveal data-i18n="c5.idx">05 — the field</span>
+      <h2 class="section__title" id="field-title" data-reveal data-i18n="c5.title">Play it forward.</h2>
+      <p class="section__lead" data-reveal data-i18n="c5.lead">…</p>
+    </header>
+
+    <div class="field-lab" data-reveal>
+      <div class="scenarios" id="field-scenarios" role="group" aria-label="Scenarios"></div>
+
+      <div class="panel field-lab__chart">
+        <div class="panel__head">
+          <span class="panel__title" data-i18n="c5.charge">charge over time</span>
+          <span class="mono panel__tag" id="field-scenario-tag">—</span>
+        </div>
+        <div class="panel__body">
+          <div class="chart" id="field-chart"></div>
+          <ul class="legend legend--tight" id="field-legend"></ul>
+          <details class="datatable" id="field-table-wrap">
+            <summary>
+              <svg width="13" height="13" aria-hidden="true"><use href="#i-table"/></svg>
+              <span data-i18n="a11y.table">…</span>
+            </summary>
+            <div id="field-table"></div>
+          </details>
+        </div>
+      </div>
+
+      <div class="field-lab__summary">
+        <div class="readout readout--hero">
+          <span class="readout__k" data-i18n="c5.ratio">wick delivered</span>
+          <span class="readout__v mono" id="field-delivered">—</span>
+          <span class="readout__sub mono" id="field-delivered-note"></span>
+        </div>
+        <div class="readout">
+          <span class="readout__k" data-i18n="c5.wickAlive">wick survived</span>
+          <span class="readout__v mono" id="field-wick-alive">—</span>
+        </div>
+        <div class="readout">
+          <span class="readout__k" data-i18n="c5.naiveAlive">baseline survived</span>
+          <span class="readout__v mono" id="field-naive-alive">—</span>
+        </div>
+        <div class="readout">
+          <span class="readout__k" data-i18n="c5.tx">transmissions</span>
+          <span class="readout__v mono" id="field-tx">—</span>
+          <span class="readout__sub mono" id="field-tx-note"></span>
+        </div>
+      </div>
+    </div>
+
+    <p class="hint hint--block" data-reveal data-i18n="c5.note">…</p>
+    <div class="field-lab__share" data-reveal>
+      <button class="btn" type="button" id="field-share">
+        <svg width="14" height="14" aria-hidden="true"><use href="#i-share"/></svg>
+        <span data-i18n="c5.share">…</span>
+      </button>
+      <span class="hint hint--inline" id="field-share-out"></span>
+    </div>
+    <p class="hint" data-i18n="c5.share.hint">…</p>
+    <p class="declare" data-reveal data-i18n="c5.declare">…</p>
+  </div>
+</section>
+
+<!-- ===================================================================== -->
+<!-- 06 · IMPACT                                                            -->
+<!-- ===================================================================== -->
+<section class="section" id="impact" aria-labelledby="impact-title">
+  <div class="wrap">
+    <header class="section__head">
+      <span class="section__index" data-reveal data-i18n="c6.idx">06 — who it is for</span>
+      <h2 class="section__title" id="impact-title" data-reveal data-i18n="c6.title">The message that has to arrive.</h2>
+      <p class="section__lead" data-reveal data-i18n="c6.lead">…</p>
+    </header>
+
+    <div class="impact" data-reveal>
+      <div class="impact__map">
+        <svg id="impact-map" viewBox="0 0 640 380" role="img" aria-labelledby="impact-map-title">
+          <title id="impact-map-title">Illustrative diagram of a degraded network with relay hops</title>
+        </svg>
+        <p class="impact__mapnote" data-i18n="c6.map.note">…</p>
+      </div>
+      <ul class="cards" id="impact-cards"></ul>
+    </div>
+
+    <p class="declare" data-reveal data-i18n="c6.declare">…</p>
+  </div>
+</section>
+
+<!-- ===================================================================== -->
+<!-- 07 · CRAFT                                                             -->
+<!-- ===================================================================== -->
+<section class="section" id="craft" aria-labelledby="craft-title">
+  <div class="wrap">
+    <header class="section__head">
+      <span class="section__index" data-reveal data-i18n="c7.idx">07 — how it is built</span>
+      <h2 class="section__title" id="craft-title" data-reveal data-i18n="c7.title">Small on purpose.</h2>
+      <p class="section__lead" data-reveal data-i18n="c7.lead">…</p>
+    </header>
+
+    <div class="craft">
+      <div class="panel craft__arch" data-reveal>
+        <div class="panel__head">
+          <span class="panel__title" data-i18n="c7.arch">Architecture</span>
+        </div>
+        <div class="panel__body">
+          <div class="arch" id="craft-arch"></div>
+          <p class="hint" data-i18n="c7.arch.note">…</p>
+        </div>
+      </div>
+
+      <div class="panel craft__files" data-reveal>
+        <div class="panel__head">
+          <span class="panel__title" data-i18n="c7.files">Core files</span>
+        </div>
+        <div class="panel__body">
+          <ul class="filetree" id="craft-files"></ul>
+        </div>
+      </div>
+
+      <div class="panel craft__budget" data-reveal>
+        <div class="panel__head">
+          <span class="panel__title" data-i18n="c7.budget">Budget, measured</span>
+        </div>
+        <div class="panel__body">
+          <table class="table" id="craft-budget">
+            <caption class="visually-hidden">Measured payload sizes</caption>
+          </table>
+          <p class="hint hint--ember" id="craft-budget-eco"></p>
+          <p class="hint" data-i18n="c7.budget.note">…</p>
+        </div>
+      </div>
+
+      <div class="panel craft__compare" data-reveal>
+        <div class="panel__head">
+          <span class="panel__title" data-i18n="c7.compare">Closest existing work, and what wick adds</span>
+        </div>
+        <div class="panel__body">
+          <ul class="compare" id="craft-compare"></ul>
+          <p class="hint" data-i18n="c7.compare.note">…</p>
+        </div>
+      </div>
+
+      <div class="panel craft__notes" data-reveal>
+        <div class="panel__head">
+          <span class="panel__title" data-i18n="c7.ethos">Boundaries</span>
+        </div>
+        <div class="panel__body">
+          <section class="notes__group">
+            <h4 class="notes__h" data-i18n="c7.a11y">Accessibility</h4>
+            <ul class="notes" id="craft-a11y"></ul>
+          </section>
+          <section class="notes__group">
+            <h4 class="notes__h" data-i18n="c7.perf">Performance</h4>
+            <ul class="notes" id="craft-perf"></ul>
+          </section>
+          <section class="notes__group">
+            <h4 class="notes__h" data-i18n="c7.sim">What is simulated</h4>
+            <p class="body-sm" data-i18n="c7.sim.note">…</p>
+          </section>
+          <section class="notes__group">
+            <h4 class="notes__h" data-i18n="c7.ai">How AI was used</h4>
+            <p class="body-sm" data-i18n="c7.ai.note">…</p>
+          </section>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer class="footer" id="footer">
+  <div class="wrap">
+    <div class="footer__grid">
+      <div>
+        <h4 data-i18n="foot.deliver">Submission</h4>
+        <ul>
+          <li><a href="README.md">README.md</a></li>
+          <li><a href="AI_USAGE.md">AI_USAGE.md</a></li>
+          <li><a href="CREDITS.md">CREDITS.md</a></li>
+          <li><a href="ai-logs/">ai-logs/</a></li>
+          <li><a href="screenshots/">screenshots/</a></li>
+        </ul>
+      </div>
+      <div>
+        <h4 data-i18n="foot.source">Source</h4>
+        <ul>
+          <li><a href="src/core/">src/core/</a> — codec, energy, budget, sync, sim</li>
+          <li><a href="src/ui/">src/ui/</a> — rendering</li>
+          <li><a href="src/workers/">src/workers/</a> — off-main-thread work</li>
+          <li><a href="sw.js">sw.js</a> · <a href="manifest.webmanifest">manifest</a></li>
+          <li><a href="tests/codec.test.html">tests/</a></li>
+        </ul>
+      </div>
+      <div>
+        <h4 data-i18n="foot.run">Run it locally</h4>
+        <ul>
+          <li class="mono">python3 -m http.server 8000</li>
+          <li class="mono">open http://localhost:8000</li>
+          <li>Service workers need http:// or https://, so a static server is enough — no build step, no package manager.</li>
+        </ul>
+      </div>
+      <div>
+        <h4 data-i18n="foot.sources">Sources &amp; credits</h4>
+        <ul>
+          <li>Space Grotesk · Florian Karsten — SIL OFL 1.1</li>
+          <li>JetBrains Mono · JetBrains — SIL OFL 1.1</li>
+          <li>Instrument Serif · Instrument — SIL OFL 1.1</li>
+          <li>No third-party JavaScript is loaded at runtime.</li>
+        </ul>
+      </div>
+    </div>
+
+    <p class="footer__disclaim" data-i18n="foot.disclaim">…</p>
+
+    <div class="footer__base">
+      <span data-i18n="foot.built">…</span>
+      <span class="mono">wick · <span id="foot-mode">full mode</span> · <span id="foot-lang">EN</span></span>
+    </div>
+  </div>
+</footer>
+
+<script type="module" src="src/main.js"></script>
+</body>
+</html>

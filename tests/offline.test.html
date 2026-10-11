@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>wick · offline shell test</title>
+<style>
+  body { background:#08080b; color:#ededf2; font:14px/1.6 ui-monospace,Menlo,monospace; padding:32px; }
+  h1 { font-size:15px; letter-spacing:.14em; text-transform:uppercase; color:#8e8e9c; }
+  .row { padding:3px 0; border-bottom:1px solid rgba(255,255,255,.06); display:flex; gap:12px; }
+  .name { flex:1; } .val { color:#8e8e9c; } .ok { color:#6fe3a6; } .fail { color:#ff5f5f; }
+  #frame { position:absolute; left:-9999px; top:0; width:1280px; height:900px; border:0; }
+  #summary { margin-top:20px; font-size:16px; }
+</style>
+</head>
+<body>
+<h1>wick · offline shell test</h1>
+<p class="val">The offline promise, tested where it can actually be tested: a real same-origin
+document with a real URL, because a Service Worker cannot be registered from a document
+written with <code>document.write</code>.</p>
+<div id="out"></div>
+<h1>the offline shell, as the worker describes it</h1>
+<pre id="report" class="val">…</pre>
+<div id="summary">loading…</div>
+
+<!-- The frame needs a real src: registration is refused inside the about:blank
+     document the integration test writes into, so the offline path is exercised
+     here instead. -->
+<iframe id="frame" title="wick under test" src="../index.html?still=1&lang=en"></iframe>
+
+<script type="module">
+/*
+ * A note on the `__result` requests below: they exist so an automated run can
+ * read this page's verdict without a screen. They carry counts and the worker's
+ * own report, they go to this same origin, and the product never makes a request
+ * like them. On `file://` they fail silently, which is expected.
+ */
+const step = (name, extra = "") => {
+  try { fetch(`__result?step=${encodeURIComponent(name)}${extra}`, { cache: "no-store" }).catch(() => {}); } catch { /* file:// */ }
+};
+addEventListener("error", (e) => step("window-error", `&detail=${encodeURIComponent(String(e.message))}`));
+addEventListener("unhandledrejection", (e) => step("unhandled-rejection", `&detail=${encodeURIComponent(String(e.reason))}`));
+
+step("script-start");
+
+const out = document.getElementById("out");
+let pass = 0, fail = 0;
+
+function report_(name, value, ok) {
+  const div = document.createElement("div");
+  div.className = "row";
+  div.innerHTML = `<span class="${ok ? "ok" : "fail"}">${ok ? "PASS" : "FAIL"}</span>` +
+    `<span class="name">${name}</span><span class="val">${value}</span>`;
+  out.appendChild(div);
+  if (ok) pass++; else fail++;
+  step("check", `&name=${encodeURIComponent(name)}&ok=${ok}&value=${encodeURIComponent(String(value).slice(0, 180))}`);
+}
+
+function check(name, fn) {
+  try {
+    const value = fn();
+    if (value === false) throw new Error("returned false");
+    report_(name, typeof value === "string" ? value : "ok", true);
+  } catch (err) {
+    report_(name, err.message, false);
+  }
+}
+
+const frame = document.getElementById("frame");
+await new Promise((resolve) => {
+  if (frame.contentDocument?.readyState === "complete") return resolve();
+  frame.addEventListener("load", resolve, { once: true });
+  setTimeout(resolve, 10000); // never hang the report on a frame that will not load
+});
+step("frame-loaded");
+
+const win = frame.contentWindow;
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+/* `contentWindow` is a stable WindowProxy across navigations; `contentDocument`
+   is a snapshot, and reading it before the frame commits its first real
+   navigation captures the initial about:blank document instead of the page.
+   Always go through the window. */
+const liveDoc = () => win.document;
+
+/**
+ * Poll a predicate that may be asynchronous, and return the first truthy value.
+ *
+ * The first version of this test asked for the registration once, before the
+ * boot module had finished mounting, and then waited fifteen seconds on that
+ * `null` — reporting "nothing registered" for a worker that was registered a
+ * moment later. Polling the live value is the difference between testing the
+ * browser and testing a stale variable.
+ */
+async function poll(fn, ms) {
+  const deadline = Date.now() + ms;
+  for (;;) {
+    let value = null;
+    try { value = await fn(); } catch { value = null; }
+    if (value) return value;
+    if (Date.now() > deadline) return null;
+    await sleep(150);
+  }
+}
+
+const booted = await poll(() => win.__wick, 10000);
+step("booted", `&manifest=${!!booted}&shell=${encodeURIComponent(booted?.shell || "none")}&error=${encodeURIComponent(booted?.shellError || "none")}`);
+
+/* ---- 1. the boot module asked for a worker ---------------------------- */
+check("the boot module finished and reports what it did about the shell", () => {
+  if (!booted) throw new Error("window.__wick never appeared — the boot module did not finish");
+  const state = booted.shell;
+  if (!state) throw new Error("no shell state on window.__wick");
+  if (state !== "registering") throw new Error(`state = ${state}; error = ${booted.shellError || "none"}`);
+  return state;
+});
+
+/* ---- 2. a registration exists, with the right scope ------------------- */
+const registration = await poll(() => win.navigator.serviceWorker?.getRegistration(), 15000);
+step("registration", `&found=${!!registration}&scope=${encodeURIComponent(registration ? registration.scope : "")}`);
+
+check("a service worker is registered for this origin", () => {
+  if (!registration) throw new Error("nothing registered after 15 s — sw.js was never registered");
+  return `scope ${new URL(registration.scope).pathname}`;
+});
+
+const activated = await poll(
+  () => win.navigator.serviceWorker.getRegistration().then((r) => (r && (r.active || r.waiting)) ? r : null),
+  15000,
+);
+check("the worker reaches active", () => {
+  if (!activated) throw new Error("still not active after 15 s");
+  const worker = activated.active || activated.waiting;
+  return `${worker.state}${activated.active ? " · active" : " · waiting"}`;
+});
+
+/* ---- 3. the worker describes its own cache --------------------------- */
+const live = activated || registration;
+let shell = null;
+await (async () => {
+  const worker = live && (live.active || live.waiting || live.installing);
+  if (!worker) return;
+  shell = await Promise.race([
+    new Promise((resolve) => {
+      const channel = new MessageChannel();
+      channel.port1.onmessage = (event) => resolve(event.data);
+      worker.postMessage("wick:shell", [channel.port2]);
+    }),
+    sleep(7000).then(() => null),
+  ]);
+})();
+step("shell-query", `&answer=${encodeURIComponent((JSON.stringify(shell) || "null").slice(0, 300))}`);
+
+check("the worker answers the shell query", () => {
+  if (!shell) throw new Error("no answer on the message channel");
+  return `v${shell.version}`;
+});
+
+check("every file in the shell manifest is cached", () => {
+  if (!shell) throw new Error("no report");
+  if (shell.failed?.length) throw new Error(`failed: ${shell.failed.join(", ")}`);
+  if (shell.cached !== shell.total) {
+    throw new Error(`${shell.cached}/${shell.total} cached · missing ${(shell.missing || []).join(", ")}`);
+  }
+  return `${shell.cached}/${shell.total} cached`;
+});
+
+check("the cached shell is not empty", () => {
+  if (!shell) throw new Error("no report");
+  if (shell.cached === 0) throw new Error("0 entries — the atomic addAll failure mode is back");
+  return `${shell.cached} entries`;
+});
+
+/* ---- 4. section 04 says the same thing the worker does --------------- */
+await poll(() => {
+  const state = liveDoc().querySelector("#off-sw")?.dataset?.state;
+  return state && state !== "pending" ? state : null;
+}, 15000);
+check("section 04 reports a truthful worker state", () => {
+  const el = liveDoc().querySelector("#off-sw");
+  if (!el) throw new Error("no #off-sw");
+  if (el.dataset.state !== "ok") {
+    throw new Error(`label "${el.textContent}" · shell=${el.dataset.shell || "-"} · missing=${el.dataset.missing || "-"}`);
+  }
+  if (shell && el.dataset.shell !== `${shell.total}/${shell.total}`) {
+    throw new Error(`section 04 reports ${el.dataset.shell}, the worker reports ${shell.cached}/${shell.total}`);
+  }
+  return `${el.textContent} · ${el.dataset.shell}`;
+});
+
+document.getElementById("report").textContent = JSON.stringify(
+  {
+    bootShellState: win.__wick?.shell,
+    bootShellError: win.__wick?.shellError || null,
+    scope: registration ? new URL(registration.scope).pathname : null,
+    workerState: registration ? (registration.active || registration.waiting)?.state : null,
+    cacheReport: shell,
+    label: liveDoc().querySelector("#off-sw")?.textContent,
+    labelShell: liveDoc().querySelector("#off-sw")?.dataset?.shell,
+    labelVerdict: liveDoc().querySelector("#off-sw")?.dataset?.verdict,
+  },
+  null,
+  2,
+);
+
+const summary = document.getElementById("summary");
+summary.textContent = `${pass} passed · ${fail} failed`;
+summary.className = fail === 0 ? "ok" : "fail";
+document.title = fail === 0 ? `wick offline tests: ${pass} passed` : `wick offline tests: ${fail} FAILED`;
+window.__WICK_OFFLINE_TESTS__ = { pass, fail };
+console.log(JSON.stringify({ pass, fail }));
+step("done", `&pass=${pass}&fail=${fail}&summary=${encodeURIComponent(summary.textContent)}`);
+</script>
+</body>
+</html>

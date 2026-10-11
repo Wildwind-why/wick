@@ -1,0 +1,173 @@
+/* ==========================================================================
+   wick — motion
+   Deliberately sparse. A project about spending resources respectfully has no
+   business animating for its own sake, so nothing here runs without a reason,
+   and 1% mode removes the lot.
+   ========================================================================== */
+
+@keyframes msg-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.99);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes hop {
+  from {
+    stroke-dashoffset: 226;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes sweep {
+  from { transform: translateX(-30%); opacity: 0; }
+  40% { opacity: 1; }
+  to { transform: translateX(130%); opacity: 0; }
+}
+
+/* a single ember line that breathes under the hero display */
+.hero__display::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: -0.5rem;
+  width: min(280px, 40%);
+  height: 1px;
+  background: linear-gradient(90deg, var(--ember), transparent);
+  opacity: 0.75;
+  animation: ember-breathe 6.5s var(--ease-inout) infinite;
+}
+
+.hero__display {
+  position: relative;
+}
+
+@keyframes ember-breathe {
+  0%, 100% { opacity: 0.72; width: min(280px, 40%); }
+  50% { opacity: 0.95; width: min(230px, 33%); }
+}
+
+/* the hex bench: a scanning highlight while a new frame lands */
+.hexdump.is-scanning .byte {
+  animation: rise 380ms var(--ease-out) backwards;
+  animation-delay: calc(var(--i, 0) * 22ms);
+}
+
+/* the rank bars start flat and grow to their value */
+.rank__bar {
+  transform-origin: left center;
+}
+
+/* the offline device pulses when a transmission is in flight */
+.device[data-busy="true"] .device__link {
+  border-color: rgba(134, 182, 255, 0.4);
+}
+
+.device[data-busy="true"] .device__link::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(90deg, transparent, rgba(134, 182, 255, 0.16), transparent);
+  animation: sweep 1.1s var(--ease-inout) infinite;
+}
+
+.device__link {
+  position: relative;
+  overflow: hidden;
+}
+
+/* chart lines draw themselves in when a scenario changes */
+.chart .wick-line,
+.chart .naive-line {
+  stroke-dasharray: 1 0;
+}
+
+/* --------------------------------------------------------------------------
+   1% mode: strip every ambient animation, drop the grain and the glow.
+   This is not only a design statement — it measurably reduces frame cost.
+   -------------------------------------------------------------------------- */
+/* `still` is used by the screenshot harness and by printing: no entrance
+   transitions, and no frame-time readout, because nothing was measured. */
+html[data-still="1"] [data-reveal] {
+  opacity: 1 !important;
+  transform: none !important;
+  transition: none !important;
+}
+
+html[data-still="1"] .telemetry__item--frame {
+  display: none;
+}
+
+html[data-mode="eco"] *,
+html[data-mode="eco"] *::before,
+html[data-mode="eco"] *::after {
+  animation: none !important;
+  transition-duration: 1ms !important;
+}
+
+html[data-mode="eco"] .hero__display::after {
+  width: min(180px, 30%);
+  opacity: 0.6;
+}
+
+html[data-mode="eco"] .grain,
+html[data-mode="eco"] .hero__glow {
+  display: none;
+}
+
+html[data-mode="eco"] .brand__wick {
+  background: var(--ember);
+  box-shadow: none;
+}
+
+html[data-mode="eco"] .ember-card canvas {
+  opacity: 0.35;
+}
+
+html[data-mode="eco"] .impact__pulse {
+  animation: none;
+  stroke-dasharray: none;
+  stroke: rgba(134, 182, 255, 0.35);
+}
+
+html[data-mode="eco"] .topbar {
+  border-bottom-color: var(--line);
+}
+
+/* ==========================================================================
+   responsive chrome
+   ========================================================================== */
+@media (max-width: 860px) {
+  .topnav { display: none; }
+  .brand__sub { display: none; }
+}
+
+@media (max-width: 620px) {
+  .telemetry__item:nth-child(3),
+  .telemetry__item:nth-child(4) {
+    display: none;
+  }
+  .telemetry { gap: 0.6rem; padding: 0.3rem 0.6rem; }
+  .eco span:last-child { display: none; }
+  .eco { padding: 0.35rem; }
+  .cost-figures { grid-template-columns: 1fr 1fr; }
+  .stats { grid-template-columns: 1fr; }
+}

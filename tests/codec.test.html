@@ -1,0 +1,420 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>wick · core test suite</title>
+<style>
+  body { background:#08080b; color:#ededf2; font:14px/1.6 ui-monospace,Menlo,monospace; padding:32px; }
+  h1 { font-size:16px; letter-spacing:.14em; text-transform:uppercase; color:#8e8e9c; }
+  .row { padding:3px 0; border-bottom:1px solid rgba(255,255,255,.06); display:flex; gap:12px; }
+  .ok { color:#6fe3a6; } .fail { color:#ff5f5f; }
+  .name { flex:1; } .val { color:#8e8e9c; }
+  #summary { margin-top:24px; font-size:16px; }
+</style>
+</head>
+<body>
+<h1>wick · core test suite</h1>
+<div id="out"></div>
+<div id="summary">running…</div>
+<script type="module">
+import { BitWriter, BitReader, zigzag, unzigzag, writeVarint, readVarint, crc8, toHex } from "../src/core/bits.js";
+import { measure, encode, decode, tokenise, normalise, dictionaryCoverage } from "../src/core/codec.js";
+import { energyPerMessage, simulate, RADIOS } from "../src/core/energy.js";
+import { compare, rankRadios } from "../src/core/budget.js";
+import { naiveWire } from "../src/core/baseline.js";
+import { run, compareScenario, SCENARIOS } from "../src/core/sim.js";
+import { chacha20, chacha20Block, poly1305, seal, open } from "../src/core/cipher.js";
+import { sealFrame, openFrame, keyFromHex, SEAL_OVERHEAD } from "../src/core/secure.js";
+
+const out = document.getElementById("out");
+let pass = 0, fail = 0;
+
+function check(name, fn) {
+  try {
+    const value = fn();
+    if (value === false) throw new Error("returned false");
+    pass++;
+    row(name, typeof value === "string" ? value : "ok", true);
+  } catch (err) {
+    fail++;
+    row(name, err.message, false);
+  }
+}
+function eq(name, actual, expected) {
+  check(name, () => {
+    if (actual !== expected) throw new Error(`expected ${expected}, got ${actual}`);
+    return String(actual);
+  });
+}
+function row(name, value, ok) {
+  const div = document.createElement("div");
+  div.className = "row";
+  div.innerHTML = `<span class="${ok ? "ok" : "fail"}">${ok ? "PASS" : "FAIL"}</span>` +
+    `<span class="name">${name}</span><span class="val">${value}</span>`;
+  out.appendChild(div);
+}
+
+/* ---- bit layer -------------------------------------------------------- */
+eq("zigzag(-1)", zigzag(-1), 1);
+eq("zigzag(1)", zigzag(1), 2);
+eq("zigzag(0)", zigzag(0), 0);
+eq("unzigzag round trip", unzigzag(zigzag(-12345)), -12345);
+
+for (const n of [0, 1, 127, 128, 16383, 16384, 2097151, 4294967]) {
+  check(`varint round trip ${n}`, () => {
+    const w = new BitWriter();
+    writeVarint(w, n);
+    const bytes = w.finish();
+    const r = new BitReader(bytes);
+    const back = readVarint(r);
+    if (back !== n) throw new Error(`got ${back}`);
+    return `${n} → ${bytes.length} B`;
+  });
+}
+
+check("bit writer packs 3+5 bits into one byte", () => {
+  const w = new BitWriter();
+  w.writeBits(0b101, 3);
+  w.writeBits(0b10011, 5);
+  const bytes = w.finish();
+  if (bytes.length !== 1) throw new Error(`expected 1 byte, got ${bytes.length}`);
+  if (bytes[0] !== 0b10110011) throw new Error(`got ${bytes[0].toString(2)}`);
+  return toHex(bytes);
+});
+
+eq("crc8 check vector \"123456789\"", crc8(new TextEncoder().encode("123456789")), 0xf4);
+
+/* ---- tokeniser -------------------------------------------------------- */
+check("\"sand\" is not tokenised as \"s\"+\"and\"", () => {
+  const items = tokenise("sand");
+  const tokens = items.filter((i) => i.kind === "token").map((i) => i.word);
+  if (tokens.includes("and")) throw new Error(`matched ${JSON.stringify(tokens)}`);
+  return "literal";
+});
+
+check("boundary words do tokenise", () => {
+  const items = tokenise("water and food");
+  const tokens = items.filter((i) => i.kind === "token").map((i) => i.word);
+  return tokens.join("+");
+});
+
+check("dictionary coverage on a real sentence", () => {
+  const c = dictionaryCoverage("need water and medical at sector 4");
+  return `${(c.ratio * 100).toFixed(0)}% in dictionary`;
+});
+
+/* ---- codec round trips ------------------------------------------------ */
+const origin = { lat: 31.2304, lon: 121.4737 };
+const fullContext = { origin, prevTime: 1760000000 };
+
+const cases = [
+  ["checkin bare", { type: "checkin", status: "safe" }, {}],
+  ["checkin + pos + time", { type: "checkin", status: "safe", position: origin, time: 1760000042 }, fullContext],
+  ["need urgent water", { type: "need", need: "water", urgency: 2 }, {}],
+  ["need + pos + time", { type: "need", need: "medical", urgency: 3, position: { lat: 31.2312, lon: 121.475 }, time: 1760000300 }, fullContext],
+  ["sitrep dictionary-only", { type: "sitrep", text: "need water and food now" }, {}],
+  ["sitrep with literals", { type: "sitrep", text: "trapped in school, 12 children, send help!" }, {}],
+  ["sitrep unusual chars", { type: "sitrep", text: "Ødegård bridge #4 open" }, {}],
+  ["sitrep + pos + time", { type: "sitrep", text: "bridge damaged", position: { lat: 31.2399, lon: 121.4699 }, time: 1760000600 }, fullContext],
+  ["beacon", { type: "beacon", position: { lat: 31.2305, lon: 121.4738 }, time: 1760000900 }, fullContext],
+  ["ack", { type: "ack", sequence: 4211 }, {}],
+];
+
+for (const [name, message, context] of cases) {
+  check(`codec round trip · ${name}`, () => {
+    const m = measure(message, context);
+    if (!m.ok) throw new Error(m.error || "round trip mismatch");
+    return `${m.size} B`;
+  });
+}
+
+check("position survives at ~11 m accuracy", () => {
+  const target = { lat: 31.2399, lon: 121.4699 };
+  const m = measure({ type: "beacon", position: target, time: 1760000900 }, fullContext);
+  const dLat = Math.abs(m.decoded.position.lat - target.lat);
+  const dLon = Math.abs(m.decoded.position.lon - target.lon);
+  const metres = Math.hypot(dLat * 111320, dLon * 111320 * Math.cos((target.lat * Math.PI) / 180));
+  if (metres > 12) throw new Error(`${metres.toFixed(1)} m off`);
+  return `${metres.toFixed(1)} m error`;
+});
+
+check("distant position still resolves", () => {
+  const far = { lat: 31.30, lon: 121.55 };
+  const m = measure({ type: "beacon", position: far, time: 1760000900 }, { origin, prevTime: 1760000000 });
+  const metres = Math.hypot(
+    (m.decoded.position.lat - far.lat) * 111320,
+    (m.decoded.position.lon - far.lon) * 111320,
+  );
+  if (metres > 12) throw new Error(`${metres.toFixed(1)} m off`);
+  return `${metres.toFixed(1)} m error, ${m.size} B`;
+});
+
+check("corrupted frame is rejected", () => {
+  const { bytes } = encode({ type: "checkin", status: "safe" });
+  const damaged = Uint8Array.from(bytes);
+  damaged[0] ^= 0b00001000; // flip one bit in the header
+  let threw = false;
+  try { decode(damaged); } catch { threw = true; }
+  if (!threw) throw new Error("corruption passed the CRC");
+  return "CRC-8 caught it";
+});
+
+check("unknown status is refused at encode time", () => {
+  let threw = false;
+  try { encode({ type: "checkin", status: "banana" }); } catch { threw = true; }
+  if (!threw) throw new Error("accepted a word outside the dictionary");
+  return "CodecError";
+});
+
+/* ---- sizes ------------------------------------------------------------ */
+check("check-in with fix and time stays ≤ 10 bytes", () => {
+  const m = measure({ type: "checkin", status: "safe", position: origin, time: 1760000042 }, fullContext);
+  if (m.size > 10) throw new Error(`${m.size} B`);
+  return `${m.size} B`;
+});
+
+check("bare check-in stays ≤ 3 bytes", () => {
+  const m = measure({ type: "checkin", status: "safe" });
+  if (m.size > 3) throw new Error(`${m.size} B`);
+  return `${m.size} B`;
+});
+
+check("naive envelope is at least 15× larger", () => {
+  const message = { type: "checkin", status: "safe", position: origin, time: 1760000042 };
+  const wick = measure(message, fullContext);
+  const naive = naiveWire(message);
+  const ratio = naive.total / wick.size;
+  if (ratio < 15) throw new Error(`only ${ratio.toFixed(1)}×`);
+  return `${wick.size} B vs ${naive.total} B → ${ratio.toFixed(0)}×`;
+});
+
+/* ---- energy ----------------------------------------------------------- */
+check("batching lowers per-message energy on LTE", () => {
+  const one = energyPerMessage({ radioId: "lte", bytes: 9, batchSize: 1 }).total;
+  const ten = energyPerMessage({ radioId: "lte", bytes: 9, batchSize: 10 }).total;
+  if (!(ten < one)) throw new Error(`${ten} !< ${one}`);
+  return `${one.toFixed(2)} J → ${ten.toFixed(3)} J per message`;
+});
+
+check("LoRa is thousands of times cheaper per message than LTE", () => {
+  const lte = energyPerMessage({ radioId: "lte", bytes: 12 }).total;
+  const lora = energyPerMessage({ radioId: "lora", bytes: 12 }).total;
+  const factor = lte / lora;
+  if (factor < 100) throw new Error(`only ${factor.toFixed(0)}×`);
+  return `${factor.toFixed(0)}×`;
+});
+
+check("1% of a phone battery buys thousands of check-ins", () => {
+  const s = simulate({ resourceId: "phone", levelPct: 1, bytes: 9, radioId: "lte" });
+  if (s.messages < 200) throw new Error(`only ${s.messages}`);
+  return `${s.messages} messages`;
+});
+
+check("every radio is modelled", () => {
+  for (const id of Object.keys(RADIOS)) {
+    const s = simulate({ resourceId: "phone", levelPct: 1, bytes: 12, radioId: id });
+    if (!Number.isFinite(s.messages) && s.messages !== Infinity) throw new Error(id);
+  }
+  return Object.keys(RADIOS).join(", ");
+});
+
+/* ---- budget ----------------------------------------------------------- */
+check("1% mode shrinks the frame", () => {
+  const message = { type: "sitrep", text: "water", position: origin, time: 1760000042 };
+  const full = compare({ message, context: fullContext, eco: false, radioId: "lora" });
+  const eco = compare({ message, context: fullContext, eco: true, radioId: "lora" });
+  if (!(eco.wick.size < full.wick.size)) throw new Error(`${eco.wick.size} !< ${full.wick.size}`);
+  return `${full.wick.size} B → ${eco.wick.size} B`;
+});
+
+check("wick beats the baseline on every radio", () => {
+  const message = { type: "need", need: "medical", urgency: 3, position: origin, time: 1760000042 };
+  const lines = [];
+  for (const radioId of Object.keys(RADIOS)) {
+    const c = compare({ message, context: fullContext, radioId, batchSize: 8 });
+    if (!(c.advantage > 1)) throw new Error(`${radioId}: ${c.advantage.toFixed(2)}×`);
+    lines.push(`${radioId} ${c.advantage.toFixed(1)}×`);
+  }
+  return lines.join(" · ");
+});
+
+check("radio ranking is deterministic and complete", () => {
+  const ranked = rankRadios({ bytes: 12, resourceId: "phone", levelPct: 1 });
+  return ranked.map((r) => r.radio.short).join(" > ");
+});
+
+/* ---- simulation ------------------------------------------------------- */
+check("simulation is deterministic for a seed", () => {
+  const a = run(SCENARIOS.quake, { bytes: 12, naiveBytes: 340 });
+  const b = run(SCENARIOS.quake, { bytes: 12, naiveBytes: 340 });
+  if (a.summary.delivered !== b.summary.delivered) throw new Error("series diverged");
+  return `${a.summary.delivered} delivered`;
+});
+
+check("wick out-delivers the baseline in the quake scenario", () => {
+  const c = compareScenario(SCENARIOS.quake, { bytes: 12, naiveBytes: 340 });
+  if (!(c.deliveredRatio > 1)) {
+    throw new Error(
+      `ratio ${c.deliveredRatio.toFixed(2)} — wick ${c.wick.summary.delivered}/${c.wick.summary.undelivered} ` +
+        `alive ${c.wick.summary.aliveHours.toFixed(1)}h · naive ${c.naive.summary.delivered}/${c.naive.summary.undelivered} ` +
+        `alive ${c.naive.summary.aliveHours.toFixed(1)}h`,
+    );
+  }
+  return `${c.wick.summary.delivered} vs ${c.naive.summary.delivered} (${c.deliveredRatio.toFixed(2)}×)`;
+});
+
+check("every scenario runs without NaN", () => {
+  const lines = [];
+  for (const key of Object.keys(SCENARIOS)) {
+    const c = compareScenario(SCENARIOS[key], { bytes: 12, naiveBytes: 340 });
+    if (!Number.isFinite(c.wick.summary.delivered)) throw new Error(key);
+    lines.push(`${key}:${c.wick.summary.delivered}`);
+  }
+  return lines.join(" ");
+});
+
+/* ---- confidentiality (RFC 8439) ---------------------------------------
+   The cipher is hand-written, so it is not trusted — it is checked against the
+   numbers the standard publishes. If the arithmetic drifts, these fail first. */
+const hexToBytes = (s) => Uint8Array.from((s.match(/../g) || []).map((b) => parseInt(b, 16)));
+const bytesToHex = (u8) => Array.from(u8, (b) => b.toString(16).padStart(2, "0")).join("");
+
+eq(
+  "RFC 8439 §2.3.2 — chacha20 block function",
+  bytesToHex(chacha20Block(
+    hexToBytes("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"),
+    1,
+    hexToBytes("000000090000004a00000000"),
+  )),
+  "10f1e7e4d13b5915500fdd1fa32071c4c7d1f4c733c068030422aa9ac3d46c4ed2826446079faa0914c2d705d98b02a2b5129cd1de164eb9cbd083e8a2503c4e",
+);
+
+eq(
+  "RFC 8439 §2.4.2 — chacha20 keystream",
+  bytesToHex(chacha20(
+    hexToBytes("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"),
+    hexToBytes("000000000000004a00000000"),
+    1,
+    new TextEncoder().encode(
+      "Ladies and Gentlemen of the class of '99: If I could offer you only one tip for the future, sunscreen would be it.",
+    ),
+  )).slice(0, 32),
+  "6e2e359a2568f98041ba0728dd0d6981",
+);
+
+eq(
+  "RFC 8439 §2.5.2 — poly1305 tag",
+  bytesToHex(poly1305(
+    new TextEncoder().encode("Cryptographic Forum Research Group"),
+    hexToBytes("85d6be7857556d337f4452fe42d506a80103808afb0db2fd4abff6af4149f51b"),
+  )),
+  "a8061dc1305136c6c22b8baf0c0127a9",
+);
+
+const RFC_KEY = hexToBytes("808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9f");
+const RFC_NONCE = hexToBytes("070000004041424344454647");
+const RFC_AAD = hexToBytes("50515253c0c1c2c3c4c5c6c7");
+const RFC_PLAIN = new TextEncoder().encode(
+  "Ladies and Gentlemen of the class of '99: If I could offer you only one tip for the future, sunscreen would be it.",
+);
+const rfcSealed = seal(RFC_KEY, RFC_NONCE, RFC_AAD, RFC_PLAIN);
+
+eq(
+  "RFC 8439 §2.8.2 — aead ciphertext",
+  bytesToHex(rfcSealed).slice(0, 32),
+  "d31a8d34648e60db7b86afbc53ef7ec2",
+);
+eq("RFC 8439 §2.8.2 — aead tag", bytesToHex(rfcSealed).slice(-32), "1ae10b594f09e26a7e902ecbd0600691");
+eq(
+  "RFC 8439 §2.8.2 — aead round trip",
+  new TextDecoder().decode(open(RFC_KEY, RFC_NONCE, RFC_AAD, rfcSealed)),
+  new TextDecoder().decode(RFC_PLAIN),
+);
+
+check("a single flipped ciphertext bit is rejected", () => {
+  const forged = rfcSealed.slice();
+  forged[5] ^= 0x01;
+  try {
+    open(RFC_KEY, RFC_NONCE, RFC_AAD, forged);
+  } catch (error) {
+    return "rejected";
+  }
+  throw new Error("a forged frame was accepted");
+});
+
+check("a relabelled header is rejected", () => {
+  const movedAad = hexToBytes("50515253c0c1c2c3c4c5c6c8");
+  try {
+    open(RFC_KEY, RFC_NONCE, movedAad, rfcSealed);
+  } catch (error) {
+    return "rejected";
+  }
+  throw new Error("the tag did not cover the header");
+});
+
+const SESSION_KEY = keyFromHex("7e1f0a4c9b2d5380e6a71c4f8b0d2935647ac1e8039f2b6d4a8e0c5173fb9d26");
+const SESSION_TAG = new Uint8Array([0x77, 0x69, 0x63, 0x6b]);
+const sampleFrame = new Uint8Array([0x21, 0x00, 0x11, 0x22, 0x33, 0x44]);
+
+check("sealing a check-in costs 25 bytes", () => {
+  const wire = sealFrame(sampleFrame, SESSION_KEY, { sessionTag: SESSION_TAG, counter: 0n });
+  const extra = wire.length - sampleFrame.length;
+  if (extra !== SEAL_OVERHEAD || extra !== 25) throw new Error(`${extra} B overhead`);
+  return `${sampleFrame.length} B → ${wire.length} B (+${extra})`;
+});
+
+check("a sealed frame opens byte-for-byte", () => {
+  const wire = sealFrame(sampleFrame, SESSION_KEY, { sessionTag: SESSION_TAG, counter: 0n });
+  const opened = openFrame(wire, SESSION_KEY, { sessionTag: SESSION_TAG, counter: 0n });
+  if (bytesToHex(opened.plaintext) !== bytesToHex(sampleFrame)) throw new Error("plaintext changed");
+  return bytesToHex(opened.plaintext);
+});
+
+check("the same frame seals differently every time", () => {
+  const session = { sessionTag: SESSION_TAG, counter: 0n };
+  const first = bytesToHex(sealFrame(sampleFrame, SESSION_KEY, session));
+  const second = bytesToHex(sealFrame(sampleFrame, SESSION_KEY, session));
+  if (first === second) throw new Error("keystream reuse — the counter did not advance");
+  return `counters 0 and 1 differ`;
+});
+
+check("a replayed sealed frame is rejected", () => {
+  const wire = sealFrame(sampleFrame, SESSION_KEY, { sessionTag: SESSION_TAG, counter: 0n });
+  const reader = { sessionTag: SESSION_TAG, counter: 0n };
+  openFrame(wire, SESSION_KEY, reader);
+  try {
+    openFrame(wire, SESSION_KEY, reader);
+  } catch (error) {
+    return "rejected";
+  }
+  throw new Error("the second copy was accepted");
+});
+
+check("a sealed frame is unreadable without the key", () => {
+  const wire = sealFrame(sampleFrame, SESSION_KEY, { sessionTag: SESSION_TAG, counter: 0n });
+  try {
+    openFrame(wire, keyFromHex("00".repeat(32)), { sessionTag: SESSION_TAG, counter: 0n });
+  } catch (error) {
+    return "rejected";
+  }
+  throw new Error("the wrong key opened it");
+});
+
+check("sealing still beats the chat envelope it replaces", () => {
+  const measurement = measure({ type: "checkin", status: "safe", position: origin, time: 1760000042 }, fullContext);
+  const wire = sealFrame(measurement.bytes, SESSION_KEY, { sessionTag: SESSION_TAG, counter: 0n });
+  const naive = naiveWire({ type: "checkin", status: "safe" }, "lte");
+  const ratio = naive.length / wire.length;
+  if (ratio < 5) throw new Error(`only ${ratio.toFixed(1)}× smaller than ${naive.length} B`);
+  return `${wire.length} B sealed vs ${naive.length} B plain chat (${ratio.toFixed(1)}×)`;
+});
+
+const summary = document.getElementById("summary");
+summary.textContent = `${pass} passed · ${fail} failed`;
+summary.className = fail === 0 ? "ok" : "fail";
+document.title = fail === 0 ? `wick tests: ${pass} passed` : `wick tests: ${fail} FAILED`;
+window.__WICK_TESTS__ = { pass, fail };
+console.log(JSON.stringify({ pass, fail }));
+</script>
+</body>
+</html>

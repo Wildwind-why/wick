@@ -1,0 +1,370 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>wick · page integration test</title>
+<style>
+  body { background:#08080b; color:#ededf2; font:14px/1.6 ui-monospace,Menlo,monospace; padding:32px; }
+  h1 { font-size:15px; letter-spacing:.14em; text-transform:uppercase; color:#8e8e9c; }
+  .row { padding:3px 0; border-bottom:1px solid rgba(255,255,255,.06); display:flex; gap:12px; }
+  .name { flex:1; } .val { color:#8e8e9c; } .ok { color:#6fe3a6; } .fail { color:#ff5f5f; }
+  #frame { width: 1280px; height: 900px; border: 1px solid rgba(255,255,255,.1); margin-top: 16px; }
+  #summary { margin-top:20px; font-size:16px; }
+</style>
+</head>
+<body>
+<h1>wick · page integration test</h1>
+<div id="out"></div>
+<div id="summary">loading page…</div>
+<iframe id="frame" title="wick under test"></iframe>
+<script type="module">
+const out = document.getElementById("out");
+let pass = 0, fail = 0;
+
+function report(name, value, ok) {
+  const div = document.createElement("div");
+  div.className = "row";
+  div.innerHTML = `<span class="${ok ? "ok" : "fail"}">${ok ? "PASS" : "FAIL"}</span>` +
+    `<span class="name">${name}</span><span class="val">${value}</span>`;
+  out.appendChild(div);
+  if (ok) pass++; else fail++;
+}
+
+const html = await fetch("../index.html").then((r) => r.text());
+const frame = document.getElementById("frame");
+const doc = frame.contentDocument;
+
+const hooks = `<base href="../"><script>
+  window.__errors = [];
+  window.addEventListener("error", (e) => window.__errors.push(String(e.message || e.error)));
+  window.addEventListener("unhandledrejection", (e) => window.__errors.push("rejection: " + e.reason));
+  const _warn = console.warn.bind(console);
+  const _error = console.error.bind(console);
+  console.warn = (...a) => { window.__errors.push("warn: " + a.map(String).join(" ")); _warn(...a); };
+  console.error = (...a) => { window.__errors.push("error: " + a.map(String).join(" ")); _error(...a); };
+<\/script>`;
+
+doc.open();
+doc.write(hooks + html);
+doc.close();
+
+await new Promise((resolve) => {
+  if (frame.contentDocument.readyState === "complete") resolve();
+  else frame.addEventListener("load", resolve, { once: true });
+});
+await new Promise((r) => setTimeout(r, 2200));
+
+/** Wait for a condition to become true, with a real deadline. */
+async function until(fn, ms = 4000) {
+  const deadline = performance.now() + ms;
+  for (;;) {
+    try {
+      if (fn()) return true;
+    } catch { /* keep waiting */ }
+    if (performance.now() > deadline) return false;
+    await new Promise((r) => setTimeout(r, 60));
+  }
+}
+
+await until(() => doc.querySelectorAll("#off-list > *").length > 0);
+await until(() => doc.querySelector("#field-chart svg"));
+await until(() => (doc.querySelector("#off-store")?.textContent || "").trim().length > 0, 6000);
+
+const q = (sel) => doc.querySelector(sel);
+const count = (sel) => doc.querySelectorAll(sel).length;
+
+function check(name, fn) {
+  try {
+    const value = fn();
+    if (value === false) throw new Error("false");
+    report(name, typeof value === "string" ? value : "ok", true);
+  } catch (err) {
+    report(name, err.message, false);
+  }
+}
+
+check("no uncaught errors during boot", () => {
+  const errors = frame.contentWindow.__errors || [];
+  if (errors.length) throw new Error(errors.slice(0, 2).join(" | "));
+  return "clean";
+});
+
+check("no console warnings during boot", () => {
+  const warnings = (frame.contentWindow.__errors || []).filter((e) => e.startsWith("warn:"));
+  if (warnings.length) throw new Error(warnings.slice(0, 3).join(" | ").slice(0, 300));
+  return "clean";
+});
+
+check("document title is set from i18n", () => {
+  const title = doc.title;
+  if (!title || title.length < 8) throw new Error(`"${title}"`);
+  return title.slice(0, 44);
+});
+
+check("hero canvas has been painted", () => {
+  const canvas = q("#hero-ember");
+  const ctx = canvas.getContext("2d");
+  const { data } = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  let lit = 0;
+  for (let i = 3; i < data.length; i += 4) if (data[i] > 6) lit++;
+  if (lit < 500) throw new Error(`only ${lit} lit pixels`);
+  return `${lit.toLocaleString()} lit pixels`;
+});
+
+check("cost anatomy rendered both bars", () => {
+  const naive = count("#anatomy-naive > *");
+  const wick = count("#anatomy-wick > *");
+  if (naive < 4) throw new Error(`naive segments ${naive}`);
+  if (wick < 3) throw new Error(`wick segments ${wick}`);
+  return `${naive} + ${wick} segments`;
+});
+
+check("codec bench produced a frame", () => {
+  const bytes = count("#bench-hex > *");
+  if (bytes < 2) throw new Error(`${bytes} bytes drawn`);
+  const decoded = q("#bench-decoded").textContent;
+  if (!decoded || decoded === "—") throw new Error("nothing decoded");
+  return `${bytes} B · ${decoded.slice(0, 40)}`;
+});
+
+check("round-trip verification passed", () => {
+  const state = q("#bench-ok").dataset.state;
+  if (state !== "ok") throw new Error(`badge state = ${state}`);
+  return "ok";
+});
+
+check("budget lab produced readouts", () => {
+  const msgs = q("#lab-msgs").textContent;
+  if (!msgs || msgs === "—") throw new Error("no message count");
+  return `1% buys ${msgs}`;
+});
+
+check("radio ranking lists every radio", () => {
+  const rows = count("#lab-rank .rank__row");
+  if (rows < 5) throw new Error(`${rows} rows`);
+  return `${rows} radios`;
+});
+
+check("field chart drew two series", () => {
+  if (!q("#field-chart svg")) throw new Error("no svg");
+  const wick = count("#field-chart .wick-line");
+  const naive = count("#field-chart .naive-line");
+  if (!wick || !naive) throw new Error("missing a series");
+  return `${q("#field-delivered").textContent} more delivered`;
+});
+
+check("offline demo initialised its outbox", () => {
+  const list = q("#off-list");
+  if (!list || !list.innerHTML.trim()) throw new Error("empty module");
+  const links = count("#off-links button");
+  if (links < 4) throw new Error(`${links} link options`);
+  const store = (q("#off-store").textContent || "").trim();
+  if (!store) throw new Error("store not reported");
+  return `${links} links · ${store}`;
+});
+
+check("impact cards rendered", () => {
+  const cards = count("#impact-cards .card");
+  if (cards < 6) throw new Error(`${cards} cards`);
+  const nodes = count("#impact-map .impact__node");
+  if (nodes < 6) throw new Error(`${nodes} map nodes`);
+  return `${cards} cards · ${nodes} nodes`;
+});
+
+check("craft section rendered architecture and budget", () => {
+  const layers = count("#craft-arch .arch__layer");
+  if (layers < 4) throw new Error(`${layers} layers`);
+  const rows = count("#craft-budget tbody tr");
+  if (rows < 8) throw new Error(`${rows} budget rows`);
+  const files = count("#craft-files li");
+  if (files < 10) throw new Error(`${files} files listed`);
+  return `${layers} layers · ${rows} rows · ${files} files`;
+});
+
+await until(() => frame.contentWindow.__wick, 8000);
+
+check("every boot module mounted", () => {
+  const manifest = frame.contentWindow.__wick;
+  if (!manifest) throw new Error("no boot manifest — src/main.js never finished");
+  if (!manifest.ok) {
+    throw new Error(manifest.failures.map((f) => `${f.name}: ${f.message}`).join(" | ").slice(0, 200));
+  }
+  return `${manifest.version} · ${manifest.failures.length} failures`;
+});
+
+/**
+ * The offline shell is a promise made in two files at once: `sw.js` lists what
+ * to cache, and the repository has to actually contain it. When those two drift
+ * apart the failure is silent — `cache.addAll` is atomic, so one missing file
+ * leaves the cache empty and the page simply stops working offline, which is
+ * the one thing this project cannot afford. Check both directions here.
+ */
+await (async () => {
+  const shell = await fetch("../sw.js").then((r) => r.text());
+  // Deduplicated: `./index.html` also appears in the fetch handler below the
+  // list, and counting it twice would overstate what gets precached.
+  const entries = [
+    ...new Set([...shell.matchAll(/"\.\/([^"]+)"/g)].map((m) => m[1]).filter((e) => !e.endsWith("/"))),
+  ];
+  const missing = [];
+  const codes = new Map();
+  for (const entry of entries) {
+    const response = await fetch(`../${entry}`, { method: "GET" });
+    codes.set(entry, response.status);
+    if (!response.ok) missing.push(`${entry} → ${response.status}`);
+  }
+  report(
+    "every file the offline shell promises exists",
+    `${entries.length} entries`,
+    missing.length === 0,
+  );
+  if (missing.length) report("shell entries that do not resolve", missing.slice(0, 4).join(", "), false);
+  // A stale entry is as bad as a missing one: it is fetched, fails, and is
+  // reported as a broken install rather than as a typo.
+  const listed = new Set(entries);
+  if (!listed.has("src/main.js")) report("sw.js SHELL omits the boot module", "src/main.js", false);
+  if (!listed.has("assets/icon.svg")) report("sw.js SHELL omits the manifest icon", "assets/icon.svg", false);
+})();
+
+check("1% mode removes the webfonts and the grain", () => {
+  const win = frame.contentWindow;
+  win.localStorage.setItem("wick:mode", JSON.stringify("eco"));
+  doc.getElementById("eco-toggle").click();
+  const mode = doc.documentElement.dataset.mode;
+  if (mode !== "eco") throw new Error(`mode = ${mode}`);
+  // switching back should be possible in the same session
+  doc.getElementById("eco-toggle").click();
+  if (doc.documentElement.dataset.mode !== "full") throw new Error("could not leave eco mode");
+  win.localStorage.setItem("wick:mode", JSON.stringify("full"));
+  return "eco ⇄ full";
+});
+
+check("the sealed frame is 25 bytes longer and verifies", () => {
+  const bytes = count("#seal-hex > .byte");
+  if (!bytes) throw new Error("no sealed frame drawn");
+  const receipt = count("#seal-receipt li");
+  if (receipt < 5) throw new Error(`${receipt} receipt rows, expected 5`);
+  const state = q("#seal-out").dataset.state;
+  if (state !== "ok") throw new Error(`verdict = "${q("#seal-out").textContent}"`);
+  // The receipt must add up: plaintext + algorithm + nonce + tag = total, and
+  // the total must be exactly 25 bytes more than the plaintext frame.
+  const plain = Number(q("#bench-size").textContent.trim());
+  const parts = [...doc.querySelectorAll("#seal-receipt .legend__val")].map((el) =>
+    parseInt(el.textContent.trim(), 10),
+  );
+  const header = plain + 25;
+  if (parts[4] !== header) throw new Error(`receipt total ${parts[4]} B, wire frame ${header} B`);
+  return `${bytes} B sealed · ${receipt} rows · +25 B`;
+});
+
+check("a forged tag is rejected in front of the visitor", () => {
+  q("#seal-tamper").click();
+  const state = q("#seal-out").dataset.state;
+  const text = q("#seal-out").textContent;
+  if (state !== "ok" || !/reject|拒绝/i.test(text)) throw new Error(`${state}: ${text.slice(0, 80)}`);
+  q("#seal-run").click();
+  return "rejected, then resealed";
+});
+
+check("a replayed sealed frame is rejected", () => {
+  q("#seal-replay").click();
+  const text = q("#seal-out").textContent;
+  if (q("#seal-out").dataset.state !== "ok" || !/reject|拒绝/i.test(text)) {
+    throw new Error(text.slice(0, 90));
+  }
+  q("#seal-run").click();
+  return "rejected";
+});
+
+check("the chart ships the same numbers as a table", () => {
+  const rows = count("#field-table table tbody tr");
+  if (rows < 12) throw new Error(`${rows} rows`);
+  const headers = count("#field-table table thead th");
+  if (headers !== 3) throw new Error(`${headers} columns`);
+  return `${rows} rows × ${headers} columns`;
+});
+
+check("the result can be exported as a card, locally", () => {
+  const downloads = [];
+  const anchorProto = frame.contentWindow.HTMLAnchorElement.prototype;
+  const original = anchorProto.click;
+  anchorProto.click = function capture() {
+    downloads.push({ name: this.download, png: this.href.startsWith("data:image/png") });
+  };
+  q("#field-share").click();
+  anchorProto.click = original;
+  if (downloads.length !== 1) throw new Error(`${downloads.length} downloads`);
+  if (!downloads[0].png) throw new Error("not a PNG");
+  return downloads[0].name;
+});
+
+check("the guided demo is opt-in and steps through the page", () => {
+  const bar = q("#tour");
+  if (!bar) throw new Error("no tour element");
+  if (!bar.hidden) throw new Error("the tour was open before anybody asked");
+  q("#demo-toggle").click();
+  if (bar.hidden) throw new Error("the toggle did not open it");
+  const first = q("#tour-count").textContent.trim();
+  if (count("main section.is-tour") < 1) throw new Error("no section marked");
+  q("#tour-next").click();
+  const second = q("#tour-count").textContent.trim();
+  q("#tour-exit").click();
+  if (!bar.hidden) throw new Error("could not close it");
+  if (count("main section.is-tour") !== 0) throw new Error("left a section marked");
+  if (first === second) throw new Error("next did not advance");
+  return `${first} → ${second} → closed`;
+});
+
+await (async () => {
+  const before = q(".section__title").textContent;
+  const beforeLang = doc.documentElement.dataset.lang;
+  doc.getElementById("lang-toggle").click();
+  await until(() => doc.documentElement.dataset.lang !== beforeLang, 4000);
+  await new Promise((r) => setTimeout(r, 260));
+  const after = q(".section__title").textContent;
+  const afterLang = doc.documentElement.dataset.lang;
+  report(
+    "language switch repaints the copy",
+    `${beforeLang} → ${afterLang}: ${after.slice(0, 14)}…`,
+    before !== after &&
+      beforeLang !== afterLang &&
+      (afterLang === "zh" ? /[\u4e00-\u9fff]/.test(after) : /[a-z]/i.test(after)),
+  );
+  // Leave the page in the language it started in.
+  doc.getElementById("lang-toggle").click();
+  await until(() => doc.documentElement.dataset.lang === beforeLang, 4000);
+  if (doc.documentElement.dataset.lang !== beforeLang) {
+    report("language switch is reversible", "did not return", false);
+  } else {
+    report("language switch is reversible", beforeLang, true);
+  }
+})();
+
+await (async () => {
+  // Both language tables must carry exactly the same keys, or a string can
+  // silently fall back to a key name in front of a jury.
+  const en = (await import("../src/ui/lang/en.js")).default;
+  const zh = (await import("../src/ui/lang/zh.js")).default;
+  const missingInZh = Object.keys(en).filter((k) => !(k in zh));
+  const missingInEn = Object.keys(zh).filter((k) => !(k in en));
+  report(
+    "both language tables have identical keys",
+    `${Object.keys(en).length} keys`,
+    missingInZh.length === 0 && missingInEn.length === 0,
+  );
+  if (missingInZh.length || missingInEn.length) {
+    report(
+      "missing translation keys",
+      `zh:${missingInZh.slice(0, 3).join(",")} en:${missingInEn.slice(0, 3).join(",")}`,
+      false,
+    );
+  }
+})();
+
+const summary = document.getElementById("summary");
+summary.textContent = `${pass} passed · ${fail} failed`;
+summary.className = fail === 0 ? "ok" : "fail";
+console.log(JSON.stringify({ pass, fail }));
+</script>
+</body>
+</html>

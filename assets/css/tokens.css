@@ -1,0 +1,109 @@
+/* ==========================================================================
+   wick — design tokens
+   Art direction: "ember instrument". A near-black field where the only warm
+   light source is the last 1% of charge. Cold signal-blue is reserved for
+   data. Every token below is also a budget: 1% mode swaps this file's
+   expensive tokens for cheap ones.
+   ========================================================================== */
+
+:root {
+  /* --- surfaces ------------------------------------------------------- */
+  --ink-000: #040406;
+  --ink-050: #08080B;
+  --ink-100: #0D0D11;
+  --ink-150: #121217;
+  --ink-200: #17171E;
+  --ink-300: #202028;
+  --ink-400: #2A2A34;
+
+  /* --- lines ---------------------------------------------------------- */
+  --line: rgba(255, 255, 255, 0.08);
+  --line-soft: rgba(255, 255, 255, 0.045);
+  --line-strong: rgba(255, 255, 255, 0.16);
+  --line-ember: rgba(255, 122, 51, 0.28);
+
+  /* --- text ----------------------------------------------------------- */
+  --text: #EDEDF2;
+  --text-2: #C3C3CE;
+  --text-dim: #8E8E9C;
+  --text-faint: #5B5B67;
+  --text-ink: #08080B;
+
+  /* --- accents -------------------------------------------------------- */
+  --ember: #FF7A33;
+  --ember-hot: #FFB877;
+  --ember-deep: #D8380F;
+  --ember-glow: rgba(255, 122, 51, 0.22);
+  --signal: #86B6FF;
+  --signal-dim: rgba(134, 182, 255, 0.5);
+  --ok: #6FE3A6;
+  --warn: #FFCF6B;
+  --crit: #FF5F5F;
+
+  /* --- type ----------------------------------------------------------- */
+  --font-display: "Space Grotesk", "Helvetica Neue", Arial, sans-serif;
+  --font-ui: "Space Grotesk", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --font-serif: "Instrument Serif", ui-serif, Georgia, "Times New Roman", serif;
+
+  /* fluid type scale */
+  --t-mono-xs: 0.6875rem;
+  --t-mono-sm: 0.75rem;
+  --t-mono: 0.8125rem;
+  --t-body: clamp(0.95rem, 0.9rem + 0.25vw, 1.0625rem);
+  --t-lead: clamp(1.125rem, 1rem + 0.7vw, 1.5rem);
+  --t-h4: clamp(1.1rem, 1rem + 0.6vw, 1.4rem);
+  --t-h3: clamp(1.5rem, 1.2rem + 1.4vw, 2.4rem);
+  --t-h2: clamp(2rem, 1.4rem + 3.2vw, 4rem);
+  --t-h1: clamp(3rem, 1.4rem + 9.5vw, 9.5rem);
+  --t-display: clamp(4rem, 1rem + 17vw, 17rem);
+
+  /* --- space ---------------------------------------------------------- */
+  --gutter: clamp(1.25rem, 4vw, 4rem);
+  --stack: clamp(3.5rem, 7vw, 7rem);
+  --section-y: clamp(5rem, 12vh, 11rem);
+  --maxw: 1240px;
+  --maxw-text: 68ch;
+
+  /* --- radii / elevation ---------------------------------------------- */
+  --r-1: 4px;
+  --r-2: 8px;
+  --r-3: 14px;
+  --r-4: 22px;
+  --r-pill: 999px;
+  --shadow-1: 0 1px 0 rgba(255, 255, 255, 0.03) inset, 0 18px 50px -28px rgba(0, 0, 0, 0.9);
+  --shadow-ember: 0 0 0 1px var(--line-ember), 0 24px 70px -40px rgba(255, 122, 51, 0.55);
+
+  /* --- motion --------------------------------------------------------- */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-inout: cubic-bezier(0.65, 0, 0.35, 1);
+  --ease-spring: cubic-bezier(0.34, 1.4, 0.64, 1);
+  --dur-1: 160ms;
+  --dur-2: 320ms;
+  --dur-3: 640ms;
+  --dur-4: 1200ms;
+
+  /* --- instrument colours used by figures ----------------------------- */
+  --fig-grid: rgba(255, 255, 255, 0.06);
+  --fig-axis: rgba(255, 255, 255, 0.14);
+  --fig-naive: #3A3A46;
+
+  color-scheme: dark;
+}
+
+/* ==========================================================================
+   1% MODE — the site applies its own thesis to itself.
+   Cheap tokens: flat surfaces, no gradients, no glow, system UI type.
+   ========================================================================== */
+html[data-mode="eco"] {
+  --ember-glow: transparent;
+  --line-ember: rgba(255, 255, 255, 0.14);
+  --shadow-1: none;
+  --shadow-ember: 0 0 0 1px var(--line-strong);
+  /* system stacks only — in eco mode the webfonts are never even requested */
+  --font-display: ui-monospace, "SF Mono", Menlo, "Roboto Mono", monospace;
+  --font-ui: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-serif: ui-serif, Georgia, "Times New Roman", serif;
+  --grain-opacity: 0;
+  --vignette-opacity: 0;
+}

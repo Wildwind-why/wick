@@ -1,0 +1,20 @@
+{
+  "name": "wick — communication for the last 1%",
+  "short_name": "wick",
+  "description": "An offline-first radio messenger that treats every byte, every joule and every second of signal as a budget.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#040406",
+  "theme_color": "#040406",
+  "categories": ["utilities", "productivity"],
+  "icons": [
+    {
+      "src": "./assets/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

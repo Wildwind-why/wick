@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>wick · screenshot harness</title>
+<style>
+  html, body { margin: 0; padding: 0; background: #040406; }
+  iframe { display: block; border: 0; }
+</style>
+</head>
+<body>
+<script>
+  /**
+   * Screenshot harness. Loads the real page at an exact size, scrolls it to a
+   * named section, pins the frame height so the layout cannot shift under the
+   * lens, and writes the numbers into the title for the driver script to read.
+   *
+   *   /tools/shots.html?section=codec&w=1440&lang=en&h=1400
+   *
+   * Only used by tools/shoot-screenshots.py. The product never loads it.
+   */
+  (function () {
+    var p = new URLSearchParams(location.search);
+    var section = p.get("section") || "top";
+    // `focus` narrows the shot to one element inside the section — used for the
+    // panel-level captures in screenshots/extra/.
+    var focus = p.get("focus") || "";
+    var w = Number(p.get("w") || 1440);
+    var h = Number(p.get("h") || 0);
+    var pad = Number(p.get("pad") || 0);
+    var lang = p.get("lang") || "en";
+    var eco = p.get("mode") === "eco";
+    var demo = p.get("demo") === "1";
+    var fixedHeight = h > 0;
+    var lastHeight = h || 900;
+
+    var frame = document.createElement("iframe");
+    frame.width = w;
+    frame.style.width = w + "px";
+    frame.style.height = lastHeight + "px";
+    frame.src =
+      "/index.html?still=1&lang=" +
+      lang +
+      (eco ? "&mode=eco" : "") +
+      (demo ? "&demo=1" : "");
+    document.body.appendChild(frame);
+    window.__ready = false;
+
+    frame.addEventListener("load", function () {
+      var doc = frame.contentDocument;
+      var win = frame.contentWindow;
+
+      var settle = function () {
+        // Smooth scrolling would still be animating when the shot is taken.
+        doc.documentElement.style.scrollBehavior = "auto";
+        var anchor = focus ? doc.getElementById(focus) : null;
+        if (anchor && section !== "top") {
+          var box = anchor.getBoundingClientRect();
+          doc.documentElement.scrollTop =
+            box.top + doc.documentElement.scrollTop - 24;
+        } else {
+          var target =
+            section === "top" ? doc.querySelector(".hero") : doc.getElementById(section);
+          if (target) {
+            var y = target.getBoundingClientRect().top + doc.documentElement.scrollTop;
+            doc.documentElement.scrollTop = y;
+          }
+        }
+        // The rail, the nav marker and the telemetry all read scroll state.
+        win.dispatchEvent(new Event("scroll"));
+        win.dispatchEvent(new Event("resize"));
+
+        if (!fixedHeight) {
+          var docH = doc.documentElement.scrollHeight;
+          var sectionEl = doc.getElementById(section);
+          var measured = focus && anchor
+            ? anchor.offsetHeight + pad
+            : section === "top"
+              ? docH
+              : sectionEl
+                ? sectionEl.offsetHeight + pad
+                : docH;
+          measured = Math.min(4000, Math.max(480, Math.round(measured)));
+          if (measured !== lastHeight) {
+            lastHeight = measured;
+            frame.height = measured;
+            frame.style.height = measured + "px";
+          }
+        }
+      };
+
+      settle();
+      var runs = 0;
+      var timer = setInterval(function () {
+        settle();
+        runs += 1;
+        // Section 04 reports what the service worker actually did, and that
+        // answer arrives asynchronously. Give it time to settle so the captured
+        // frame shows a verdict rather than "checking…".
+        // Not waiting for the service-worker verdict: a headless capture cannot
+        // complete a worker lifecycle, so the row in section 04 will report
+        // whatever this environment honestly produced. The verified 48/48 comes
+        // from tests/offline.test.html, which runs in a real browser.
+        var done = runs > 14;
+        // The title is written on every tick, not only when the loop ends: the
+        // height probe reads it, and a run that is cut short by the virtual
+        // time budget must still report the height it had reached.
+        {
+          document.title =
+            "wick shot · " +
+            section +
+            " · H=" +
+            lastHeight +
+            " · mode=" +
+            doc.documentElement.dataset.mode +
+            " · still=" +
+            (doc.documentElement.dataset.still || "no") +
+            " · in=" +
+            doc.querySelectorAll(".is-in").length +
+            "/" +
+            doc.querySelectorAll("[data-reveal]").length +
+            " · store=" +
+            (doc.querySelector("#off-store")
+              ? doc.querySelector("#off-store").textContent
+              : "n/a") +
+            " · sw=" +
+            (doc.querySelector("#off-sw") ? doc.querySelector("#off-sw").dataset.verdict || "pending" : "n/a") +
+            " · shell=" +
+            (doc.querySelector("#off-sw") ? doc.querySelector("#off-sw").dataset.shell || "-" : "-") +
+            " · secure=" +
+            (win.isSecureContext ? "yes" : "no") +
+            " · api=" +
+            ("serviceWorker" in win.navigator ? "yes" : "no") +
+            " · proto=" +
+            win.location.protocol +
+            " · done=" +
+            (done ? "yes" : "no");
+        }
+        if (done) {
+          clearInterval(timer);
+          window.__ready = true;
+        }
+      }, 120);
+    });
+  })();
+</script>
+</body>
+</html>
