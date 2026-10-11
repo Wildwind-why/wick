@@ -58,6 +58,7 @@ export async function initOffline() {
 
   let link = LINKS.offline;
   let outbox = null;
+  const CAPTURE = new URL(location.href).searchParams.get("capture") === "1";
 
   const store = await openStore();
   outbox = new Outbox(store, { batchLimit: 12 });
@@ -84,38 +85,51 @@ export async function initOffline() {
     // panel, and it must not wait on a worker that may take seconds to
     // activate — or never answer at all, which is exactly what happened when
     // this code trusted a `.catch()` on a promise that never rejects.
-    reportWorkerState().then((state) => {
+    reportWorkerState(CAPTURE ? 60000 : 6000).then((state) => {
       const KEY = {
         active: "c4.sw.active",     // registered, in scope, and the whole shell is in the cache
         partial: "c4.sw.partial",   // registered, but the cache is incomplete or something failed
         absent: "c4.sw.absent",     // nothing registered here yet
         unsupported: "c4.sw.none",  // this context cannot host a worker at all
       };
-      refs.sw.textContent = t(KEY[state] || "c4.sw.none");
+      const shell = refs.sw.dataset.shell;
+      const label = t(KEY[state] || "c4.sw.none");
+      refs.sw.textContent = shell ? `${label} · ${shell}` : label;
       refs.sw.dataset.state = state === "active" ? "ok" : state === "unsupported" ? "unsupported" : "partial";
       refs.sw.dataset.verdict = state;
     });
   }
 
   /* ---- rendering ------------------------------------------------------- */
+  // The head of the queue (newest message) gets a distinct treatment so the
+  // reader can always tell what is about to go out. Bytes and status share one
+  // secondary line, which frees horizontal room for the message text, and a
+  // long queue collapses into a single "+ N older" row instead of scrolling.
+  const MAX_VISIBLE = 6;
   const render = () => {
     const items = outbox.items;
     if (items.length === 0) {
       refs.list.innerHTML = `<p class="device__empty">${escapeHtml(t("c4.empty"))}</p>`;
     } else {
-      refs.list.innerHTML = items
-        .slice()
-        .reverse()
-        .map((item) => {
-          const label = describe(item.message);
-          return (
-            `<div class="msg" data-status="${item.status}">` +
-            `<span class="msg__text">${escapeHtml(label)}</span>` +
-            `<span class="msg__meta"><span>${item.bytes} B</span>` +
-            `<span class="msg__chip">${escapeHtml(t(STATUS_LABEL[item.status]))}</span></span></div>`
-          );
-        })
-        .join("");
+      const head = items.slice().reverse();
+      const visible = head.slice(0, MAX_VISIBLE);
+      const older = head.length - visible.length;
+      refs.list.innerHTML =
+        visible
+          .map((item, i) => {
+            const label = describe(item.message);
+            const meta = `${item.bytes} B · ${t(STATUS_LABEL[item.status])}`;
+            const cls = i === 0 ? "msg msg--head" : i === 1 ? "msg msg--open" : "msg";
+            return (
+              `<div class="${cls}" data-status="${item.status}">` +
+              `<span class="msg__text">${escapeHtml(label)}</span>` +
+              `<span class="msg__meta">${escapeHtml(meta)}</span></div>`
+            );
+          })
+          .join("") +
+        (older > 0
+          ? `<div class="msg msg--more">+ ${escapeHtml(t("c4.older", { n: older }))}</div>`
+          : "");
     }
     if (refs.count) refs.count.textContent = `${nf(outbox.queuedCount)} queued · ${nf(outbox.sent)} sent`;
     if (refs.hint) {
@@ -272,8 +286,12 @@ async function reportWorkerState(timeoutMs = 6000) {
    * cache *as long as an install is still in flight*. Only a short cache with
    * nothing installing is a result worth reporting.
    */
+  // Give the worker room to finish installing when the screenshot harness asks
+  // for a longer deadline; the default stays tight for real users.
+  const attempts = timeoutMs >= 20000 ? 20 : 6;
+  const messageTimeout = timeoutMs >= 20000 ? 5000 : 2000;
   let report = null;
-  for (let attempt = 0; attempt < 6; attempt += 1) {
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
     let installing = false;
     try {
       const live = await navigator.serviceWorker.getRegistration().catch(() => null);
@@ -286,7 +304,7 @@ async function reportWorkerState(timeoutMs = 6000) {
             channel.port1.onmessage = (event) => resolve(event.data);
             worker.postMessage("wick:shell", [channel.port2]);
           }),
-          new Promise((resolve) => setTimeout(() => resolve(null), 2000)),
+          new Promise((resolve) => setTimeout(() => resolve(null), messageTimeout)),
         ]);
       }
     } catch {

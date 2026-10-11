@@ -67,8 +67,8 @@ python3 -m http.server 8000
 ```
 scope /                                  ← 已注册，作用域覆盖整站
 activated · active                       ← 已激活
-{"version":"wick-v2","total":48,"cached":48,"missing":[],"failed":[]}
-第 04 节显示：active · shell cached · 48/48
+{"version":"wick-v2","total":43,"cached":43,"missing":[],"failed":[]}
+第 04 节显示：active · shell cached · 43/43
 ```
 
 第 04 节的标签只在**拿到 worker 自报的完整清单之后**才会变成 `active · shell cached`；拿不到清单时它显示 `registered · cache unconfirmed`，环境不支持时显示 `unavailable in this context`。一个页面不应该把「已缓存」写在没有任何证据的地方。
@@ -121,7 +121,7 @@ activated · active                       ← 已激活
 | 无线电按「送达条数」排名 | ✅ 已实现 | `src/core/budget.js` + `src/ui/lab.js` |
 | 1% 模式（产品层：舍弃位置/时间/文采） | ✅ 已实现 | `src/core/budget.js`（`ECO_TRIMMING`） |
 | 1% 模式（页面层：不加载字体、去动效、退系统字体） | ✅ 已实现 | `src/ui/settings.js` + `assets/css/motion.css` |
-| Service Worker 预缓存整套外壳 | ✅ 已实现 | `sw.js`（逐条 `put`，失败条目可读回）+ `src/main.js` 注册；实测 48/48 |
+| Service Worker 预缓存整套外壳 | ✅ 已实现 | `sw.js`（逐条 `put`，失败条目可读回）+ `src/main.js` 注册；实测 43/43 |
 | 离线状态如实上报（不谎报「已缓存」） | ✅ 已实现 | `src/ui/offline.js` 的 `reportWorkerState()`，三种状态 + 缓存条目数 |
 | IndexedDB 本地发件队列（含内存降级） | ✅ 已实现 | `src/core/store.js` |
 | store-and-forward 合批发送与自动冲刷 | ✅ 已实现 | `src/core/sync.js` + `src/ui/offline.js` |
@@ -287,7 +287,7 @@ wick/
 
 - **打包脚本把引导模块漏掉了。** `tools/pack.py` 的资源白名单列的是 `src/core`、`src/ui`、`src/workers` 三个子目录，而 `src/main.js` 位于 `src/` 根下——于是打包出的压缩包里没有它，而 `index.html` 和 `sw.js` 都还在引用它。后果不是「少了个文件」，是**整个交互层不启动**：整页测试 17 项里红 11 项，首屏只剩一片黑。修法不只是补回文件，而是把白名单改成整目录递归，并在 `pack.py` 里加一个**双向校验**：SHELL 里列的每个文件都必须在包里，`index.html` 引用的每个本地资源都必须在包里，`src/main.js` 必须在包里。只有单向检查的打包器会带着绿灯发出一个坏页面。
 - **离线预缓存曾经是空的。** `sw.js` 用 `cache.addAll(SHELL)` 预缓存，而它**是原子的**：清单里任何一个 404 会让整批 reject，缓存里一条都没有；而 `.catch(() => self.skipWaiting())` 把这个 reject 吞掉了。于是页面显示 `service worker: active`，DevTools 里 `wick-v1` 有 0 条记录——「离线优先」这个最核心的主张在最需要它的时候不成立。现在改成逐条 `put`、记录失败条目、并且可以在页面上读到结果：一个缺失文件只应该让那一个文件失效，而不是让整个外壳失效。
-- **整个站点从来没有注册过 Service Worker。** 这一条比上面两条更严重，因为它跟丢失的 `main.js` 是同一个伤口：注册那一行本来就在 `src/main.js` 里（原始压缩包中除 `main.js` 之外没有任何一处提到 `serviceWorker` 或 `register(`），而我在重建引导模块时**没有把它补回来**。后果是：worker 从未被安装、缓存从未被填充，而 `src/ui/offline.js` 因为信任 `navigator.serviceWorker.ready` 就把标签写成了 `active · shell cached`——`ready` 在「什么都没注册」时**不是 reject，而是永不 settle**，所以 `.catch()` 永远不会触发。一个页面把「已缓存」写在没有任何证据的地方，正是这个项目最不该犯的错。修法有三层：在 `src/main.js` 里真正调用 `register()`；把标签改成只在**读到 worker 自报的完整清单**之后才说 `active`，否则说 `registered · cache unconfirmed`；并新增 `tests/offline.test.html`，在真实浏览器里断言 `48/48`。
+- **整个站点从来没有注册过 Service Worker。** 这一条比上面两条更严重，因为它跟丢失的 `main.js` 是同一个伤口：注册那一行本来就在 `src/main.js` 里（原始压缩包中除 `main.js` 之外没有任何一处提到 `serviceWorker` 或 `register(`），而我在重建引导模块时**没有把它补回来**。后果是：worker 从未被安装、缓存从未被填充，而 `src/ui/offline.js` 因为信任 `navigator.serviceWorker.ready` 就把标签写成了 `active · shell cached`——`ready` 在「什么都没注册」时**不是 reject，而是永不 settle**，所以 `.catch()` 永远不会触发。一个页面把「已缓存」写在没有任何证据的地方，正是这个项目最不该犯的错。修法有三层：在 `src/main.js` 里真正调用 `register()`；把标签改成只在**读到 worker 自报的完整清单**之后才说 `active`，否则说 `registered · cache unconfirmed`；并新增 `tests/offline.test.html`，在真实浏览器里断言 `43/43`。
 - **外壳曾经劫持整个 origin。** 第一版的导航策略是「任何 `navigate` 请求都返回缓存里的 `index.html`」。单页应用看不出问题，直到同一个 origin 下面还有别的东西——`tests/` 下的页面请求到的却是应用外壳，而外壳里的相对路径 `assets/…`、`src/…` 于是被解析到 `/tests/` 下面，全部 404。这是我在排查上面那一条时，从服务端日志里看到 `/tests/assets/app.css` 这种请求才发现的。现在导航回退只对**清单里真实存在的导航条目**（`./`、`./index.html`）生效，其余请求照常走网络。一个对外壳之外 URL 也作答的外壳，不是离线支持，是劫持。
 - **能耗模型的第一版是错的**：它同时按消息摊销固定成本、又把封帧摊进字节数，等于把合批的好处算了两遍，导致 LTE 上「wick 反而不如基线」。是测试断言把它抓出来的，不是肉眼。
 - **帧的十六进制视图第一版渲染不出任何字节**：`Uint8Array.prototype.map` 返回的是 TypedArray 而不是字符串，直接塞进 `innerHTML` 只会得到 `0,0,0`。这类错误只有靠真实渲染截图才看得见。
@@ -380,7 +380,7 @@ open http://localhost:8000/tests/offline.test.html
 
 **整页集成测试（25 项，全部通过）** 覆盖：启动无未捕获异常与告警、**每个引导模块都挂载成功（`window.__wick.ok`）**、**离线外壳清单里的每个文件都真的存在**、标题本地化、Canvas 真实绘制（按亮度像素计数）、字节解剖两条柱、编解码实验台产出帧、往返校验通过、**密封帧的收据自洽（明文 + 25 B = 线上帧）**、**伪造标签被拒绝**、**重放帧被拒绝**、预算读数、无线电排名完整、图表两条序列、**图表同时提供数据表**、离线队列初始化、**成绩卡可导出且是 PNG**、**引导演示默认关闭、可开可关、会标记当前分区**、情境卡片与网络图、第 07 节四个分区、1% 模式往返切换、中英切换可逆，以及**两份语言表键集完全一致（275 键）**。
 
-**离线外壳测试（7 项，全部通过）** 覆盖：引导模块完成了并报出它对外壳做了什么、worker 已注册且作用域覆盖整站、worker 达到 `active`、worker 在消息通道上回答了缓存查询、**清单里 48 个条目全部已缓存**、缓存非空（守住「原子 `addAll` 导致 0 条」那个失败模式），以及**第 04 节的标签与 worker 自报的数字一致**。
+**离线外壳测试（7 项，全部通过）** 覆盖：引导模块完成了并报出它对外壳做了什么、worker 已注册且作用域覆盖整站、worker 达到 `active`、worker 在消息通道上回答了缓存查询、**清单里 43 个条目全部已缓存**、缓存非空（守住「原子 `addAll` 导致 0 条」那个失败模式），以及**第 04 节的标签与 worker 自报的数字一致**。
 
 ---
 

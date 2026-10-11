@@ -261,6 +261,18 @@ p {
   --btn-bg: var(--ember-hot);
 }
 
+/* 1% mode: a solid orange button is the most expensive ink on the page. Eco
+   turns every button into a quiet outline so ember is reserved for the one
+   "1%" number in the hero. */
+html[data-mode="eco"] .btn {
+  --btn-bg: transparent;
+  --btn-bd: var(--line-strong);
+  --btn-fg: var(--text);
+}
+html[data-mode="eco"] .section__title em {
+  color: var(--text-2);
+}
+
 .btn__dot {
   width: 6px;
   height: 6px;
@@ -341,6 +353,7 @@ p {
 
 .panel__body {
   padding: 1.1rem;
+  min-width: 0;
 }
 
 /* --- readout (label + value pair) ------------------------------------ */
@@ -502,6 +515,7 @@ html[data-mode="eco"] .topbar {
   font-size: var(--t-mono-xs);
   color: var(--text-dim);
   letter-spacing: 0.02em;
+  white-space: nowrap;
 }
 
 .telemetry__item b {

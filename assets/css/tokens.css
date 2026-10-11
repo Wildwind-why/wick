@@ -39,6 +39,12 @@
   --ok: #6FE3A6;
   --warn: #FFCF6B;
   --crit: #FF5F5F;
+  /* The message body — a fourth semantic colour, distinct from the warm
+     accents and the cold signal-blue, so a reader can tell "what I said"
+     apart from "the overhead" and "the cost". */
+  --payload: #C5A0FF;
+  --payload-bg: rgba(197, 160, 255, 0.15);
+  --payload-bd: rgba(197, 160, 255, 0.26);
 
   /* --- type ----------------------------------------------------------- */
   --font-display: "Space Grotesk", "Helvetica Neue", Arial, sans-serif;
@@ -106,4 +112,40 @@ html[data-mode="eco"] {
   --font-serif: ui-serif, Georgia, "Times New Roman", serif;
   --grain-opacity: 0;
   --vignette-opacity: 0;
+
+  /* --- four-layer reinforcement: 1% mode must look like a different
+     *working* of the page, not the same page turned down. --- */
+
+  /* shape: every boundary becomes a 1px line, not a rounded card */
+  --r-3: 0;
+  --r-4: 0;
+
+  /* scale: the headline physically shrinks — "less is the budget" made literal */
+  --t-display: 11rem;
+  --t-h2: 2.6rem;
+
+  /* grayscale: lift the text to near-white and reserve ember for one element */
+  --text: #FFFFFF;
+  --text-2: #E8E8EE;
+
+  /* density: eco breathes less — its character is compression, not whitespace */
+  --section-y: clamp(3rem, 7.2vh, 6.6rem);
+  --stack: clamp(2.1rem, 4.2vw, 4.2rem);
+
+  /* keep the characters-per-line steady when the system font is narrower */
+  --maxw-text: 62ch;
+}
+
+/* ==========================================================================
+   LARGE SCREENS — a wider canvas, not a louder one.
+   Without this, 2560px shows a 1240px column floating in dead space and a
+   hero card that looks like a thumbnail. The column grows, but the reading
+   measure is capped so lines do not sprawl.
+   ========================================================================== */
+@media (min-width: 1920px) {
+  :root {
+    --maxw: 1480px;
+    --gutter: 6rem;
+    --section-y: clamp(5rem, 9vh, 9rem);
+  }
 }

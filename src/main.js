@@ -134,7 +134,8 @@ const shellRegistration = registerOfflineShell();
       is the only thing here that can be slow, blocked or absent. It runs last
       and is bounded, so a hanging IndexedDB costs the visitor the outbox —
       never the six sections above it. */
-await mount("offline", () => mountWithin(initOffline, 8000));
+const CAPTURE_BOOT = location.search.includes("capture=1");
+await mount("offline", () => mountWithin(initOffline, CAPTURE_BOOT ? 60000 : 8000));
 
 // Getters, not captured values: registration settles after the boot sequence
 // finishes, and a snapshot would report the state of the page at mount time

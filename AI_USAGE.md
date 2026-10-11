@@ -74,7 +74,7 @@ This file declares how AI was used, in full and without softening. Judging is me
 | 11 | **自检脚本只检查一个方向**（只查「运行时文件是否都在清单里」，不查「清单里的文件是否存在」），正好放过了第 9、10 两个错误 | 写双向版脚本时发现 | `HANDOFF.md` 第 9 节改成双向并返回非零退出码；同一条不变量也进整页测试断言 |
 | 12 | **成绩卡按钮一开始是死的**：第 05 节在引导阶段就渲染完并广播了结果，而成绩卡模块在同一批里挂载得更晚，错过了唯一一次事件 | 整页测试里新加的「导出卡片」断言返回 0 次下载 | 第 05 节把最近一次结果留在模块里并可读（`currentFieldResult()`），成绩卡点击时兜底取用；事件机制保留给后续更新 |
 | 13 | **RFC 测试向量抄漏了两个字符**：手工转录 §2.3.2 的分组函数期望值时少写了 `c7` | 新加的密码学断言 | 逐字节重新比对标准正文后修正。这也说明了一件事：这类断言的价值就在于它不容忍「差不多」 |
-| 14 | **整个站点从来没有注册过 Service Worker**。注册那一行本来在丢失的 `src/main.js` 里，而重建引导模块时没有把它补回来。后果：worker 从未安装、缓存从未填充，而第 04 节因为信任 `navigator.serviceWorker.ready` 就把标签写成 `active · shell cached`——`ready` 在「什么都没注册」时不是 reject 而是**永不 settle**，`.catch()` 永远不会触发 | 在真实浏览器里跑一遍并读服务端访问日志：`sw.js` 一次请求都没有出现 | 在 `src/main.js` 里真正调用 `register()`；把标签改成只在读到 worker 自报的完整清单之后才说 `active`，否则说 `registered · cache unconfirmed`；新增 `tests/offline.test.html` 断言 `48/48` |
+| 14 | **整个站点从来没有注册过 Service Worker**。注册那一行本来在丢失的 `src/main.js` 里，而重建引导模块时没有把它补回来。后果：worker 从未安装、缓存从未填充，而第 04 节因为信任 `navigator.serviceWorker.ready` 就把标签写成 `active · shell cached`——`ready` 在「什么都没注册」时不是 reject 而是**永不 settle**，`.catch()` 永远不会触发 | 在真实浏览器里跑一遍并读服务端访问日志：`sw.js` 一次请求都没有出现 | 在 `src/main.js` 里真正调用 `register()`；把标签改成只在读到 worker 自报的完整清单之后才说 `active`，否则说 `registered · cache unconfirmed`；新增 `tests/offline.test.html` 断言 `43/43` |
 | 15 | **外壳劫持整个 origin**：第一版的导航策略是「任何 `navigate` 请求都返回缓存的 `index.html`」。同一 origin 下还有 `tests/` 时，请求那些页面拿到的却是应用外壳，外壳里的相对路径被解析到 `/tests/` 下面全部 404 | 排查上一条时，从服务端日志里看到 `/tests/assets/app.css` 这种请求 | 导航回退只对清单里真实存在的导航条目生效（`./`、`./index.html`），其余请求照常走网络 |
 | 16 | **我写离线测试页时踩了三个自己的坑**：没等 `window.__wick` 出现就断言；`getRegistration()` 只查一次（那时还没注册）然后一直等那个 `null`；把 `frame.contentDocument` 当稳定引用用——它是快照，而 `contentWindow` 才是跨导航稳定的 WindowProxy | 给测试页加了分步回传，把失败点定位到具体步骤 | 改成轮询活值、统一走 `win.document`。这一条记下来是因为它属于同一类错误：**测的时候信了一个此刻为真、下一刻不一定为真的假设** |
 
@@ -102,7 +102,7 @@ This file declares how AI was used, in full and without softening. Judging is me
 | --- | --- |
 | 58 项内核测试通过 | 打开 `tests/codec.test.html` |
 | 25 项整页测试通过 | 打开 `tests/page.test.html` |
-| 7 项离线外壳测试通过、48/48 已缓存 | 在真实浏览器里打开 `tests/offline.test.html`，页面会打印 worker 的自报结果 |
+| 7 项离线外壳测试通过、43/43 已缓存 | 在真实浏览器里打开 `tests/offline.test.html`，页面会打印 worker 的自报结果 |
 | ChaCha20-Poly1305 符合 RFC 8439 | 同上，内核测试里的四组向量断言 |
 | 密封帧 31 字节（明文 6 + 25） | 第 02 节「Seal this frame」，或读 `src/core/secure.js` 的 `wireBreakdown()` |
 | 体积数字 | `python3 tools/build-budget-data.py` |

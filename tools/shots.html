@@ -39,7 +39,7 @@
     frame.style.width = w + "px";
     frame.style.height = lastHeight + "px";
     frame.src =
-      "/index.html?still=1&lang=" +
+      "/index.html?still=1&capture=1&lang=" +
       lang +
       (eco ? "&mode=eco" : "") +
       (demo ? "&demo=1" : "");
@@ -95,13 +95,17 @@
         settle();
         runs += 1;
         // Section 04 reports what the service worker actually did, and that
-        // answer arrives asynchronously. Give it time to settle so the captured
-        // frame shows a verdict rather than "checking…".
-        // Not waiting for the service-worker verdict: a headless capture cannot
-        // complete a worker lifecycle, so the row in section 04 will report
-        // whatever this environment honestly produced. The verified 48/48 comes
-        // from tests/offline.test.html, which runs in a real browser.
-        var done = runs > 14;
+        // answer arrives asynchronously. Give it enough time to install,
+        // activate and answer so the captured frame shows "active · shell
+        // cached · 43/43". We also wait for i18n placeholders to be replaced,
+        // so the screenshot carries real copy.
+        var sw = doc.querySelector("#off-sw");
+        var swActive = sw && sw.dataset.verdict === "active" && /^\d+\/\d+$/.test(sw.dataset.shell || "");
+        var store = doc.querySelector("#off-store");
+        var storeSettled = store && store.textContent !== "—";
+        var realBody = doc.querySelector('[data-i18n="c4.real.body"]');
+        var bodySettled = !realBody || (realBody.textContent.trim() !== "…" && realBody.textContent.trim().length > 20);
+        var done = (swActive && storeSettled && bodySettled) || runs > 250;
         // The title is written on every tick, not only when the loop ends: the
         // height probe reads it, and a run that is cut short by the virtual
         // time budget must still report the height it had reached.

@@ -42,6 +42,15 @@
   align-items: center;
 }
 
+/* on wide canvases the right column is given more room and the card stops
+   looking like a thumbnail */
+@media (min-width: 1920px) {
+  .hero__grid { grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); }
+  .ember-card { min-height: 420px; }
+  .hero__lead { max-width: var(--maxw-text); }
+  .section__lead { max-width: var(--maxw-text); }
+}
+
 .hero__display {
   margin: clamp(1rem, 2.5vh, 2rem) 0 clamp(1rem, 2.5vh, 1.75rem);
   display: flex;
@@ -57,7 +66,7 @@
   font-weight: 500;
   letter-spacing: -0.06em;
   line-height: 0.78;
-  background: linear-gradient(168deg, #FFFFFF 6%, var(--ember-hot) 58%, var(--ember-deep) 118%);
+  background: linear-gradient(168deg, var(--text) 6%, var(--ember-hot) 58%, var(--ember-deep) 118%);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
@@ -219,9 +228,10 @@ html[data-mode="eco"] .hero__num {
    shared bits
    ========================================================================== */
 .hint {
-  font-size: 0.81rem;
-  line-height: 1.55;
-  color: var(--text-faint);
+  font-size: 0.875rem;
+  line-height: 1.6;
+  color: var(--text-dim);
+  max-width: var(--maxw-text);
   margin-top: 0.7rem;
 }
 
@@ -233,11 +243,11 @@ html[data-mode="eco"] .hero__num {
 .hint--ember {
   color: var(--ember-hot);
   opacity: 0.9;
-  max-width: 68ch;
+  max-width: var(--maxw-text);
 }
 
 .hint--block {
-  max-width: 62ch;
+  max-width: calc(var(--maxw-text) * 0.9);
   margin-top: 1.6rem;
   display: block;
 }
@@ -387,6 +397,13 @@ html[data-mode="eco"] .hero__num {
   outline: none;
   border-color: var(--line-ember);
   background: var(--ink-200);
+}
+
+/* the select is the one control whose focus ring had been suppressed; give it the
+   same ember ring as the rest of the page so a keyboard user never loses it */
+.select:focus {
+  outline: 2px solid var(--ember-hot);
+  outline-offset: 2px;
 }
 
 textarea.input {
@@ -546,6 +563,26 @@ textarea.input {
   outline-offset: 2px;
 }
 
+/* the real input is 0×0; the visible ring already lives on the track above, so
+   suppress the phantom ring that would otherwise paint on the invisible box */
+.switch input:focus-visible {
+  outline: none;
+}
+
+/* enlarge the touch target of the 22px-tall segmented controls and chips to a
+   44px hit area without changing their visual size — compact feel stays, miss
+   rate drops */
+.seg, .chips { position: relative; }
+.seg button, .chip { position: relative; }
+.seg button::before, .chip::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -11px;
+  bottom: -11px;
+}
+
 .switch__label {
   font-size: 0.82rem;
   color: var(--text-dim);
@@ -594,7 +631,7 @@ textarea.input {
   cursor: default;
 }
 
-.legend li[data-key] {
+.legend li[data-keys] {
   cursor: pointer;
 }
 
@@ -613,6 +650,50 @@ textarea.input {
   color: var(--text-faint);
   margin-left: 0.1rem;
 }
+
+/* Layered legend: three primary rows stay visible; the full byte breakdown is a
+   collapsible table so the figure reads at a glance without hiding the numbers. */
+.legend--primary { margin-bottom: 0.5rem; }
+
+.legend-detail {
+  margin-top: 0.4rem;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+}
+
+.legend-detail > summary {
+  cursor: pointer;
+  color: var(--text-dim);
+  letter-spacing: 0.04em;
+  user-select: none;
+}
+
+.legend-detail > summary:hover { color: var(--text); }
+
+.legend-detail__table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 0.5rem;
+}
+
+.legend-detail__table td {
+  padding: 0.18rem 0.4rem;
+  color: var(--text-dim);
+  border-top: 1px solid var(--line);
+}
+
+.legend-detail__table tr[data-keys] { cursor: pointer; }
+.legend-detail__table tr.is-dim { opacity: 0.34; }
+
+.legend-detail__label { color: var(--text); }
+.legend-detail__bar {
+  color: var(--text-faint);
+  text-transform: uppercase;
+  font-size: 9px;
+  letter-spacing: 0.08em;
+}
+.legend-detail__val { text-align: right; color: var(--text-faint); white-space: nowrap; }
+.legend-detail__table td:first-child { width: 1.4rem; }
 
 /* ==========================================================================
    01 · cost
@@ -796,7 +877,7 @@ textarea.input {
 .byte[data-group="token"] { background: rgba(255, 122, 51, 0.18); border-color: rgba(255, 122, 51, 0.3); }
 .byte[data-group="position"] { background: rgba(111, 227, 166, 0.14); border-color: rgba(111, 227, 166, 0.24); }
 .byte[data-group="time"] { background: rgba(255, 207, 107, 0.14); border-color: rgba(255, 207, 107, 0.24); }
-.byte[data-group="text"] { background: rgba(197, 160, 255, 0.15); border-color: rgba(197, 160, 255, 0.26); }
+.byte[data-group="text"] { background: var(--payload-bg); border-color: var(--payload-bd); }
 .byte[data-group="integrity"] { background: rgba(255, 95, 95, 0.13); border-color: rgba(255, 95, 95, 0.24); }
 
 .byte.is-hi {
@@ -1179,24 +1260,39 @@ textarea.input {
 .msg[data-status="sending"] { border-color: rgba(134, 182, 255, 0.26); }
 .msg[data-status="sent"] { opacity: 0.5; }
 
+/* The newest message is the one about to leave: give it an ember spine and let
+   its text breathe so the operator can read the full line at a glance. The
+   second-newest also drops truncation, so the head pair is always legible. */
+.msg--head { border-left: 2px solid var(--ember); }
+.msg--head .msg__text,
+.msg--open .msg__text {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+}
+
+.msg--more {
+  grid-template-columns: 1fr;
+  background: transparent;
+  border-color: transparent;
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  animation: none;
+}
+
 .msg[data-status="sent"] .msg__text {
   text-decoration: line-through;
   text-decoration-color: var(--text-faint);
   color: var(--text-dim);
 }
 
-.msg__chip {
-  padding: 0.14rem 0.4rem;
-  border-radius: 4px;
-  font-size: 9.5px;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
-}
-
-.msg[data-status="queued"] .msg__chip { background: rgba(255, 207, 107, 0.16); color: var(--warn); }
-.msg[data-status="sending"] .msg__chip { background: rgba(134, 182, 255, 0.16); color: var(--signal); }
-.msg[data-status="sent"] .msg__chip { background: rgba(111, 227, 166, 0.14); color: var(--ok); }
-.msg[data-status="failed"] .msg__chip { background: rgba(255, 95, 95, 0.14); color: var(--crit); }
+/* Status colour now lives on the merged meta line (bytes · status). */
+.msg[data-status="queued"] .msg__meta { color: var(--warn); }
+.msg[data-status="sending"] .msg__meta { color: var(--signal); }
+.msg[data-status="sent"] .msg__meta { color: var(--ok); }
+.msg[data-status="failed"] .msg__meta { color: var(--crit); }
 
 .device__empty {
   display: grid;
@@ -1587,6 +1683,7 @@ textarea.input {
   margin: 0;
   display: grid;
   gap: 0.4rem;
+  min-width: 0;
 }
 
 .filetree li {
@@ -1604,6 +1701,7 @@ textarea.input {
   font-size: 11px;
   color: var(--text);
   letter-spacing: -0.01em;
+  overflow-wrap: anywhere;
 }
 
 .filetree span {

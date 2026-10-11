@@ -9,9 +9,9 @@
 import { $, rafThrottle } from "./dom.js";
 import { t, nf } from "./i18n.js";
 import { onState, state } from "./state.js";
+import { getFrameCostMs } from "./hero.js";
 
 let frameSamples = [];
-let lastFrame = 0;
 let medianMs = 0;
 
 export function initTelemetry() {
@@ -63,30 +63,28 @@ export function initTelemetry() {
   window.addEventListener("offline", syncLink);
   syncLink();
 
-  /* ---- median frame interval ------------------------------------------ */
-  const sample = (now) => {
-    if (lastFrame) {
-      const delta = now - lastFrame;
-      if (delta > 0 && delta < 600) {
-        frameSamples.push(delta);
-        if (frameSamples.length > 40) frameSamples.shift();
-      }
-    }
-    lastFrame = now;
-    requestAnimationFrame(sample);
-  };
-  requestAnimationFrame(sample);
-
+  /* ---- per-frame script time ------------------------------------------
+     The falsifiable half of the 1% claim. It reports the median time the
+     page's heaviest per-frame work (the ember canvas, measured in hero.js)
+     actually takes — not the display refresh interval, which is pinned to the
+     monitor and would read identical in every mode. Because 1% mode draws
+     less often and with fewer strokes, its number is lower, not higher. */
   setInterval(() => {
+    const cost = getFrameCostMs();
+    if (cost > 0) {
+      frameSamples.push(cost);
+      if (frameSamples.length > 40) frameSamples.shift();
+    }
     if (frameSamples.length < 4 || !frameEl) return;
     const sorted = [...frameSamples].sort((a, b) => a - b);
     const median = sorted[sorted.length >> 1];
     // Only report a move worth reporting, so the number stays readable.
-    if (Math.abs(median - medianMs) > 0.6) {
+    if (Math.abs(median - medianMs) > 0.02) {
       medianMs = median;
-      frameEl.textContent = `${median.toFixed(1)} ms`;
-      frameEl.dataset.state = median < 17 ? "ok" : median < 26 ? "warn" : "crit";
+      frameEl.textContent = `${median.toFixed(2)} ms`;
+      frameEl.dataset.state = median < 1 ? "ok" : median < 4 ? "warn" : "crit";
     }
   }, 1400);
+
 
 }

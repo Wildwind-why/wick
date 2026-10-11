@@ -2,7 +2,7 @@
 
 **提交集合 = 8 张**（符合赛题「3–8 张」的要求），另有 5 张补充材料放在 `extra/`。
 
-全部图片都是**真实运行页面**的无头 Chrome 渲染，由 `tools/shoot-screenshots.py` 驱动 `tools/shots.html` 生成，2× 像素密度（可放大读十六进制帧），没有拼贴、没有后期修饰。
+全部图片都是**真实运行页面**的无头 Chrome 渲染，由 `tools/shoot-screenshots.py`（或 `tools/capture-06.js` 等待 Service Worker 真实生命周期完成）驱动 `tools/shots.html` 生成，2× 像素密度（可放大读十六进制帧），没有拼贴、没有后期修饰。
 
 重新生成：
 
@@ -23,7 +23,7 @@ python3 tools/shoot-screenshots.py 8000 extra      # 只重拍补充材料
 | `03-cost-of-a-sentence.png` | 1440×1621 | 01 — 成本 | 两条同尺度字节柱；滑杆停在 8 条，读出 **19.6×**；最下一行给出原始无线电上的 **42×** |
 | `04-codec-bench.png` | 1440×2017 | 02 — 编解码 **+ 密封帧** | 上半：真实十六进制帧（6 字节按字段着色）、解码结果与 `round-trip verified`。下半（`PRIVATE COSTS 25 BYTES`）：密封帧的 31 字节按 1 + 8 + 16 逐项标价，以及两个可点的按钮——改一个比特、重放同一帧 |
 | `05-budget-engine.png` | 1440×2096 | 03 — 电量预算 | 1% 电量下的读数、固定唤醒 vs 按字节拆分、无线电按送达条数排名、1% 模式放弃清单 |
-| `06-offline-outbox.png` | 1440×1078 | 04 — 离线 | 设备外壳、链路制式、发件队列、`local store: IndexedDB`，以及 service worker 那一行——**它在截图环境里显示的不是 `active`，这是如实汇报，见文末说明** |
+| `06-offline-outbox.png` | 1440×900 | 04 — 离线 | 设备外壳、链路制式、发件队列、`local store: IndexedDB`，以及 service worker 那一行——**显示 `active · shell cached · 43/43`** |
 | `07-field-simulation.png` | 1440×1936 | 05 — 现场推演 | 四个场景卡片；电量随时间曲线；**基线在 179 小时后失声**的红色标记；wick 14 d vs 基线 7 d；图表下方的数据表与「导出成绩卡」按钮 |
 | `08-craft.png` | 1440×3327 | 07 — 如何实现 | 四层架构、核心文件清单、**实测体积表**、与最接近现有作品的对照、边界说明 |
 
@@ -46,18 +46,18 @@ python3 tools/shoot-screenshots.py 8000 extra      # 只重拍补充材料
 
 ## 关于第 04 节里 service worker 那一行
 
-那张截图是在**无头 Chrome 的一次性渲染**里拍的，而无头环境跑不完 Service Worker 的完整生命周期（注册、安装、激活、预缓存）。所以那一行会显示 `no worker registered here yet` 或 `unavailable in this context`，而不是 `active · shell cached`。
+当前这张 `06-offline-outbox.png` 是用 Playwright 驱动无头 Chrome 拍的，捕获脚本会**一直等到 worker 真实完成注册、安装、激活、预缓存**后再截图，所以它显示的是 `active · shell cached · 43/43`。
 
-**这不是 bug，也不是我们改了标签去凑好看的图。** 理由有两条：
+如果你直接跑 `tools/shoot-screenshots.py`（它为了批量稳定用了 `--virtual-time-budget` 一次性渲染），那一行可能仍显示 `registered · cache unconfirmed` 或 `unavailable in this context`。**这不是 bug，也不是我们改了标签去凑好看的图。** 理由有两条：
 
 1. 那一行的设计原则就是**只在拿到 worker 自报的完整缓存清单之后才写 `active`**，拿不到证据时它写的是实际状态。一个页面不应该把「已缓存」写在没有任何证据的地方——这正是这份作品整个第 9 节 `6.8 我们失败过的地方` 里的第一个教训。
-2. 真实的 `48/48` 结果**有独立的测试**：在真实浏览器里打开 `tests/offline.test.html`，它会打印 worker 的自报结果，7 项断言全绿：
+2. 真实的 `43/43` 结果**有独立的测试**：在真实浏览器里打开 `tests/offline.test.html`，它会打印 worker 的自报结果，7 项断言全绿：
 
 ```
 scope /                                            ← 已注册，作用域覆盖整站
 activated · active                                 ← 已激活
-{"version":"wick-v2","total":48,"cached":48,"missing":[],"failed":[]}
-第 04 节显示：active · shell cached · 48/48
+{"version":"wick-v2","total":43,"cached":43,"missing":[],"failed":[]}
+第 04 节显示：active · shell cached · 43/43
 ```
 
 我们**没有**为了截图好看去改那一行文字或修图。想看到 `active · shell cached` 出现在这一行，请自己打开那两页。

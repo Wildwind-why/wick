@@ -1,7 +1,8 @@
 /* ==========================================================================
    wick — self-hosted typefaces (latin subsets, variable where available)
-   No third-party requests at runtime. This file is only requested in full
-   mode; 1% mode never downloads a single font byte.
+   No third-party requests at runtime. This file is only ever requested in
+   full mode; in 1% mode it is never requested and never enters the offline
+   shell, so the page that describes wick also obeys the budget it preaches.
    Credit: Space Grotesk (Florian Karsten), JetBrains Mono (JetBrains),
    Instrument Serif (Instrument) — all SIL Open Font License 1.1.
    ========================================================================== */

@@ -14,7 +14,7 @@
 | 密封帧（算法标识 + 随机数后缀 + 认证标签，25 B 开销） | ✅ 可用 | `src/core/secure.js`；第 02 节下半有收据 |
 | 防重放（单调计数器）与伪造帧拒绝 | ✅ 可用 | 第 02 节按钮可当场伪造；测试断言 |
 | 电量预算引擎（5 无线电 × 5 能量来源） | ✅ 可用 | 第 03 节交互 + 内核测试第 8 组断言 |
-| 离线 store-and-forward（SW + IndexedDB） | ✅ 可用 | 第 04 节；真实浏览器实测 48/48 已缓存 |
+| 离线 store-and-forward（SW + IndexedDB） | ✅ 可用 | 第 04 节；真实浏览器实测 43/43 已缓存 |
 | 逐分钟现场推演（4 场景） | ✅ 可用 | 第 05 节；Worker 内运行 |
 | 结果导出为 PNG 成绩卡 | ✅ 可用 | 第 05 节按钮；本机 canvas 绘制 |
 | 七步引导演示（`?demo=1`） | ✅ 可用 | `src/ui/tour.js`；方向键 + Esc |
@@ -102,22 +102,22 @@ javascript         76,981 B
 
 **场景结果**（地震安置点，2G，336 小时）：wick 送达 6,929 条、撑满 336 h、2,139 次传输；基线送达 3,487 条、179 h 后失声。
 
-**离线自检方法**：起服务器 → 打开页面 → DevTools → Application → Service Workers 确认 active，Cache Storage 里 `wick-v2` 应有 **48 条**记录（`SHELL` 的 48 个条目：47 个文件 + 目录入口 `./`）；然后勾 Offline 刷新，页面应完整回来、第 04 节仍显示 `service worker: active · shell cached`。如果条目数是 0，说明有文件没找到 —— 跑第 9 节的脚本。
+**离线自检方法**：起服务器 → 打开页面 → DevTools → Application → Service Workers 确认 active，Cache Storage 里 `wick-v2` 应有 **43 条**记录（`SHELL` 的 43 个条目：42 个文件 + 目录入口 `./`）；然后勾 Offline 刷新，页面应完整回来、第 04 节仍显示 `service worker: active · shell cached`。如果条目数是 0，说明有文件没找到 —— 跑第 9 节的脚本。
 
 **离线承诺的端到端实测**（`tests/offline.test.html`，在真实浏览器里打开即可复现）：
 
 ```
 scope /                                   ← 已注册，作用域覆盖整站
 activated · active                        ← 已激活
-{"version":"wick-v2","total":48,"cached":48,"missing":[],"failed":[]}
-第 04 节显示：active · shell cached · 48/48
+{"version":"wick-v2","total":43,"cached":43,"missing":[],"failed":[]}
+第 04 节显示：active · shell cached · 43/43
 ```
 
 这一页把应用装进一个**有真实 URL 的同源 iframe**——因为 Service Worker 无法在 `document.write` 出来的文档里注册，而整页测试正是那样装载页面的。它需要真实的 worker 生命周期，所以无头 `--dump-dom` 环境跑不了（那里 Cache API 的 promise 不 settle，而且为了结束进程必须 SIGKILL，CacheStorage 来不及刷盘）。**跑法就是打开它**，页面会自己打印结论。
 
-**从服务端侧看到的证据**（同一次会话的访问日志）：`/sw.js` 被请求 1 次（注册），另有 **44 个路径各被请求 2 次**（页面加载一次 + worker 的 `precache()` 用 `cache: "reload"` 再拉一次）。这是「预缓存真的发出了请求」的直接证据，不需要读浏览器的内部状态。
+**从服务端侧看到的证据**（同一次会话的访问日志）：`/sw.js` 被请求 1 次（注册），`SHELL` 里的每个路径各被请求 2 次（页面加载一次 + worker 的 `precache()` 用 `cache: "reload"` 再拉一次）。这是「预缓存真的发出了请求」的直接证据，不需要读浏览器的内部状态。
 
-**安装逻辑的确定性验证**：把 `sw.js` 载入一个 `self`/`caches`/`fetch` 都是替身的上下文，手动调用 install 处理器与 message 处理器。实测：48 条全部入缓存、引导模块与 manifest 图标都在、无重复键；把一个条目改成 404 时，**其余 47 条照常入缓存，失败条目被记录并可通过消息通道读回**（`{cached: 47, total: 48, missing: ['./assets/icon.svg'], failed: ['./assets/icon.svg (404)']}`）；worker 被重启（内存清空）后仍能通过**读缓存**正确回答，而不是依赖某个已经消失的变量。
+**安装逻辑的确定性验证**：把 `sw.js` 载入一个 `self`/`caches`/`fetch` 都是替身的上下文，手动调用 install 处理器与 message 处理器。实测：43 条全部入缓存、引导模块与 manifest 图标都在、无重复键；把一个条目改成 404 时，**其余 42 条照常入缓存，失败条目被记录并可通过消息通道读回**（`{cached: 42, total: 43, missing: ['./assets/icon.svg'], failed: ['./assets/icon.svg (404)']}`）；worker 被重启（内存清空）后仍能通过**读缓存**正确回答，而不是依赖某个已经消失的变量。
 
 ---
 
@@ -188,8 +188,8 @@ activated · active                        ← 已激活
 - [ ] `sw.js` 的 `SHELL` 含全部运行时文件，且每个文件都真实存在（第 9 节脚本）
 - [ ] `python3 tools/build-budget-data.py` 能跑通且不报缺文件
 - [ ] `python3 tools/pack.py 2.0` 的 `verify()` 无告警
-- [ ] 断网刷新仍可用（Cache Storage 里 `wick-v2` 条目数 = SHELL 条目数 = 48）
-- [ ] 在真实浏览器里打开 `tests/offline.test.html`，应为 **7 passed · 0 failed** 且报出 `48/48 cached`
+- [ ] 断网刷新仍可用（Cache Storage 里 `wick-v2` 条目数 = SHELL 条目数 = 43）
+- [ ] 在真实浏览器里打开 `tests/offline.test.html`，应为 **7 passed · 0 failed** 且报出 `43/43 cached`
 - [ ] `?mode=eco`、`?lang=zh`、`?demo=1` 深链仍有效
 - [ ] 键盘 Tab 一遍，每个控件可达、焦点可见；引导演示方向键 + Esc 可用
 - [ ] `prefers-reduced-motion` 下无动画

@@ -35,6 +35,11 @@ const WICK_GROUPS = {
 };
 
 export function initCost() {
+  // The message-body colour is the one semantic colour outside the warm/cold
+  // accents; bind it to the --payload token so it can never silently drift.
+  const payload = getComputedStyle(document.documentElement).getPropertyValue("--payload").trim();
+  if (payload) WICK_GROUPS.text.colour = payload;
+
   const batch = $("#cost-batch");
   const batchVal = $("#cost-batch-val");
   const naiveBar = $("#anatomy-naive");
@@ -145,64 +150,103 @@ function paint(host, parts, scale, minPct = 0) {
 
 function renderLegend(host, naiveParts, wickParts, measurement) {
   if (!host) return;
-  const rows = [];
   const naiveLabels = Object.fromEntries(NAIVE_GROUPS.map((g) => [g.key, g]));
 
+  // Every part, in order, for the drill-down table.
+  const allRows = [];
   for (const part of naiveParts) {
     if (part.bytes <= 0) continue;
     const meta = naiveLabels[part.key];
-    rows.push({
-      key: part.key,
-      bar: "naive",
-      label: t(meta.label),
-      colour: part.colour,
-      bytes: part.bytes,
-    });
+    allRows.push({ key: part.key, bar: "naive", label: t(meta.label), colour: part.colour, bytes: part.bytes });
   }
   for (const part of wickParts) {
     const meta = WICK_GROUPS[part.key] || WICK_GROUPS.header;
-    rows.push({
-      key: part.key,
-      bar: "wick",
-      label: t(meta.label),
-      colour: part.colour,
-      bytes: part.bytes,
-    });
+    allRows.push({ key: part.key, bar: "wick", label: t(meta.label), colour: part.colour, bytes: part.bytes });
   }
 
-  host.innerHTML = rows
-    .map(
-      (row) =>
-        `<li data-key="${escapeHtml(row.key)}" data-bar="${row.bar}">` +
-        `<span class="legend__swatch" style="background:${row.colour}"></span>` +
-        `${escapeHtml(row.label)}` +
-        `<span class="legend__val">${row.bytes.toFixed(1)} B</span></li>`,
-    )
-    .join("");
+  // Only three segments are genuinely discernible on the bar — surface those in
+  // the legend, and push the sub-byte breakdown into a collapsible table.
+  const payload = naiveParts.find((p) => p.key === "payload");
+  const text = wickParts.find((p) => p.key === "text");
+  const frameKeys = ["header", "token", "position", "time", "integrity", "transport"];
+  const frameBytes = wickParts
+    .filter((p) => frameKeys.includes(p.key))
+    .reduce((s, p) => s + p.bytes, 0);
+  const primary = [
+    {
+      keys: ["payload"],
+      label: t("c1.legend.payload"),
+      colour: payload ? payload.colour : NAIVE_GROUPS[0].colour,
+      bytes: payload ? payload.bytes : 0,
+    },
+    {
+      keys: ["text"],
+      label: t("c1.legend.text"),
+      colour: text ? text.colour : WICK_GROUPS.text.colour,
+      bytes: text ? text.bytes : 0,
+    },
+    {
+      keys: frameKeys,
+      label: t("c1.legend.frame"),
+      colour: WICK_GROUPS.header.colour,
+      bytes: frameBytes,
+    },
+  ];
 
-  // Hovering a legend entry isolates that field in both bars.
-  host.querySelectorAll("li").forEach((li) => {
-    const key = li.dataset.key;
-    const enter = () => highlight(key);
+  host.innerHTML =
+    `<ul class="legend legend--primary">` +
+    primary
+      .map(
+        (row) =>
+          `<li data-keys="${row.keys.join(",")}">` +
+          `<span class="legend__swatch" style="background:${row.colour}"></span>` +
+          `${escapeHtml(row.label)}` +
+          `<span class="legend__val">${row.bytes.toFixed(1)} B</span></li>`,
+      )
+      .join("") +
+    `</ul>` +
+    `<details class="legend-detail">` +
+    `<summary>${escapeHtml(t("c1.legend.more"))}</summary>` +
+    `<table class="legend-detail__table"><tbody>` +
+    allRows
+      .map(
+        (row) =>
+          `<tr data-keys="${row.key}">` +
+          `<td><span class="legend__swatch" style="background:${row.colour}"></span></td>` +
+          `<td class="legend-detail__label">${escapeHtml(row.label)}</td>` +
+          `<td class="legend-detail__bar">${row.bar === "naive" ? "JSON" : "wick"}</td>` +
+          `<td class="legend-detail__val">${row.bytes.toFixed(1)} B</td></tr>`,
+      )
+      .join("") +
+    `</tbody></table>` +
+    `</details>`;
+
+  // Hovering any entry (primary or drill-down) isolates those fields in both bars.
+  for (const row of host.querySelectorAll("[data-keys]")) {
+    const keys = row.dataset.keys.split(",");
+    const enter = () => highlight(keys);
     const leave = () => highlight(null);
-    li.addEventListener("mouseenter", enter);
-    li.addEventListener("mouseleave", leave);
-    li.addEventListener("focus", enter);
-    li.addEventListener("blur", leave);
-  });
+    row.addEventListener("mouseenter", enter);
+    row.addEventListener("mouseleave", leave);
+    row.addEventListener("focus", enter);
+    row.addEventListener("blur", leave);
+  }
 
-  function highlight(key) {
-    for (const bar of [document.getElementById("anatomy-naive"), document.getElementById("anatomy-wick")]) {
+  function highlight(keys) {
+    const keySet = keys ? new Set(keys) : null;
+    for (const id of ["anatomy-naive", "anatomy-wick"]) {
+      const bar = document.getElementById(id);
       if (!bar) continue;
-      bar.classList.toggle("is-dimmed", Boolean(key));
+      bar.classList.toggle("is-dimmed", Boolean(keySet));
       for (const seg of bar.children) {
-        const on = key && seg.dataset.key === key;
+        const on = keySet && keySet.has(seg.dataset.key);
         seg.toggleAttribute("data-hi", Boolean(on));
         seg.style.filter = on ? "brightness(1.16)" : "";
       }
     }
-    for (const li of host.children) {
-      li.classList.toggle("is-dim", Boolean(key) && li.dataset.key !== key);
+    for (const row of host.querySelectorAll("[data-keys]")) {
+      const rk = row.dataset.keys.split(",");
+      row.classList.toggle("is-dim", Boolean(keySet) && !rk.some((k) => keySet.has(k)));
     }
   }
 }

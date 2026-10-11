@@ -44,6 +44,13 @@ const PRESETS = [
 ];
 
 export function initBench() {
+  // Keep the message-body colour bound to the --payload token (hex → "r,g,b").
+  const payload = getComputedStyle(document.documentElement).getPropertyValue("--payload").trim();
+  if (payload && /^#[0-9a-f]{6}$/i.test(payload)) {
+    const n = parseInt(payload.slice(1), 16);
+    GROUPS.text.max = `${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}`;
+  }
+
   const refs = {
     presets: $("#bench-presets"),
     types: $("#bench-types"),

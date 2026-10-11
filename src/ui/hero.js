@@ -3,8 +3,9 @@
  *
  * A live trace of a link that is mostly gone: a few dozen horizontal scans,
  * one warm light behind them, and nothing else. It is deliberately the most
- * expensive thing on the page, which is why 1% mode cuts it by two thirds and
- * the frame-time readout in the corner proves it.
+ * expensive thing on the page, which is why 1% mode draws it less often and
+ * with fewer strokes — and the "script / frame" readout in the corner reports
+ * the cost it actually measures, not a refresh interval.
  */
 
 import { $, prefersReducedMotion } from "./dom.js";
@@ -12,6 +13,8 @@ import { onState, state, measureCurrent, codecContext } from "./state.js";
 import { compare } from "../core/budget.js";
 import { nf } from "./i18n.js";
 import { getMode } from "./settings.js";
+
+let heroFrameCostMs = 0;
 
 const QUALITY = {
   full: { lines: 26, points: 92, glow: true, stride: 1 },
@@ -24,6 +27,11 @@ export function initHero() {
   wireReadouts();
 }
 
+/** Median milliseconds the ember canvas spent on its last draws. */
+export function getFrameCostMs() {
+  return heroFrameCostMs;
+}
+
 function startEmber(canvas) {
   const ctx = canvas.getContext("2d", { alpha: true });
   if (!ctx) return;
@@ -33,6 +41,8 @@ function startEmber(canvas) {
   let dpr = 1;
   let phase = 0;
   let frame = 0;
+  let drawTimes = [];
+  let drawMedian = 0;
   const reduced =
     prefersReducedMotion() || document.documentElement.dataset.still === "1";
 
@@ -45,6 +55,7 @@ function startEmber(canvas) {
   };
 
   const draw = (time) => {
+    const t0 = typeof performance !== "undefined" ? performance.now() : 0;
     const q = QUALITY[getMode()] || QUALITY.full;
     ctx.clearRect(0, 0, width, height);
 
@@ -103,6 +114,17 @@ function startEmber(canvas) {
     ctx.arc(cx, cy + 8, 1.6, 0, Math.PI * 2);
     ctx.fillStyle = `rgba(255,200,150,${(0.9 * flicker).toFixed(3)})`;
     ctx.fill();
+
+    // The median cost of this draw is what the "script / frame" readout reports.
+    const t1 = typeof performance !== "undefined" ? performance.now() : 0;
+    const dt = t1 - t0;
+    if (dt >= 0 && dt < 200) {
+      drawTimes.push(dt);
+      if (drawTimes.length > 30) drawTimes.shift();
+      const sorted = [...drawTimes].sort((a, b) => a - b);
+      drawMedian = sorted[Math.floor(sorted.length / 2)];
+      heroFrameCostMs = drawMedian;
+    }
   };
 
   /**
@@ -128,21 +150,53 @@ function startEmber(canvas) {
 
   if (reduced) return;
 
-  const loop = () => {
-    frame += 1;
-    const q = QUALITY[getMode()] || QUALITY.full;
-    if (frame % q.stride === 0) {
-      phase += 0.016 * q.stride;
-      draw(phase);
+  let rafId = 0;
+  let timeoutId = 0;
+
+  const stopAnim = () => {
+    if (rafId) {
+      cancelAnimationFrame(rafId);
+      rafId = 0;
     }
-    requestAnimationFrame(loop);
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+      timeoutId = 0;
+    }
   };
-  requestAnimationFrame(loop);
+
+  /* In 1% mode the canvas is redrawn on a 20fps timer instead of every frame, so
+     the page genuinely idles between paints. The same loop drives both; only the
+     scheduler changes with the mode. */
+  const startAnim = () => {
+    stopAnim();
+    const tick = () => {
+      frame += 1;
+      const q = QUALITY[getMode()] || QUALITY.full;
+      if (frame % q.stride === 0) {
+        phase += 0.016 * q.stride;
+        draw(phase);
+      }
+      if (getMode() === "eco") timeoutId = setTimeout(tick, 50);
+      else rafId = requestAnimationFrame(tick);
+    };
+    if (getMode() === "eco") timeoutId = setTimeout(tick, 50);
+    else rafId = requestAnimationFrame(tick);
+  };
+
+  startAnim();
 
   document.addEventListener("wick:mode", () => {
     frame = 0;
     resize();
     draw(phase);
+    startAnim();
+  });
+
+  /* A page that preaches 1% battery should not keep burning CPU in a tab the
+     visitor can no longer see. */
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) stopAnim();
+    else startAnim();
   });
 }
 
