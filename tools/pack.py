@@ -40,7 +40,17 @@ ROOT_FILES = [
     "启动-wick.cmd",
     "启动-局域网演示.cmd",
 ]
-DOC_FILES = ["README.md", "CONTRIBUTING.md", "AI_USAGE.md", "CREDITS.md", "DEMO.md", "HANDOFF.md", "CHANGELOG.md", "Mac打开方法.md"]
+DOC_FILES = [
+    "README.md",
+    "提交说明.md",
+    "CONTRIBUTING.md",
+    "AI_USAGE.md",
+    "CREDITS.md",
+    "DEMO.md",
+    "HANDOFF.md",
+    "CHANGELOG.md",
+    "Mac打开方法.md",
+]
 
 SKIP_NAMES = {".DS_Store", "Thumbs.db"}
 SKIP_SUFFIX = (".pyc", ".bak", ".orig", ".swp")
