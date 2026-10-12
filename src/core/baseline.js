@@ -125,5 +125,5 @@ export function naiveWire(message, radioId = "lte") {
  */
 export function batched(bytesPerMessage, count, framingBytes = 0) {
   if (count <= 0) return framingBytes;
-  return Math.ceil((bytesPerMessage * count + framingBytes) / count);
+  return (bytesPerMessage * count + framingBytes) / count;
 }

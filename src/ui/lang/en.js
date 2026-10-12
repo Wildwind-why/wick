@@ -1,11 +1,8 @@
-/** English copy. See i18n.js for the binding rules. */
+/** Interface copy · keep language key sets in sync. */
 export default {
   "meta.title": "wick — communication for the last 1%",
-  "meta.desc":
-    "An offline-first radio messenger that treats every byte, every joule and every second of signal as a budget. Built for when almost nothing is left.",
-
+  "meta.desc": "Offline-first messaging prototype: exact text, durable queues, an optional LAN relay and transparent resource models.",
   "brand.sub": "1% Battery",
-
   "nav.story": "Cost",
   "nav.codec": "Codec",
   "nav.budget": "Budget",
@@ -13,48 +10,38 @@ export default {
   "nav.field": "Field",
   "nav.impact": "Impact",
   "nav.craft": "Craft",
-
   "eco.label": "1% mode",
   "eco.title": "Strip this website down to its essentials",
   "lang.title": "Switch language",
   "skip": "Skip to content",
-
   "tel.signal": "signal",
-  "tel.charge": "site charge",
-  "tel.saved": "bytes saved",
+  "tel.charge": "illustrated charge",
+  "tel.saved": "modelled bytes saved",
   "tel.frame": "script / frame",
   "tel.online": "online",
   "tel.offline": "no link",
-
   "hero.eyebrow": "1% Battery · Engineering & Social Impact",
   "hero.q": "How far can 1% go?",
   "hero.title": "Communication for when almost nothing is left.",
-  "hero.lead":
-    "When the grid fails, the network fails first — and the battery fails last. wick is an offline-first radio messenger that treats every byte, every joule and every second of signal as something you spend. It is built for the moment a message matters more than the device carrying it.",
-  "hero.cta1": "Open the codec bench",
+  "hero.lead": "When power and connectivity are scarce, the message must keep its meaning. Compose offline, preserve names, numbers and location, then confirm delivery through a second device on a local network. Radio energy and field scenarios are explicitly modelled.",
+  "hero.cta1": "Try sending a message",
   "hero.cta2": "Turn on 1% mode",
   "hero.scroll": "Scroll to spend the charge",
-  "hero.note":
-    "This page is on a budget too. The rail on the left drains from 100% to 1% as you descend.",
-
+  "hero.note": "The scroll rail is an illustration, not your battery. 1% mode stops canvas animation and skips webfonts on a fresh visit. Real relay delivery requires a local connection.",
   "stat.bytes.k": "bytes per check-in",
-  "stat.msgs.k": "check-ins on 1% of a phone",
-  "stat.net.k": "network required",
-  "stat.net.v": "none",
+  "stat.msgs.k": "transmit-only estimate · 1% LTE",
+  "stat.net.k": "offline composition",
+  "stat.net.v": "available",
   "stat.deps.k": "runtime dependencies",
   "stat.deps.v": "0",
-
   "c1.idx": "01 — the problem",
   "c1.title": "A sentence should not cost a connection.",
-  "c1.lead":
-    "To say “I’m safe”, a mainstream encrypted messenger spends a few hundred bytes before it has delivered a single word of it. Almost none of that is your message — it is the machinery around it.",
-  "c1.naive": "A mainstream messenger",
+  "c1.lead": "Compare wick with a constructed JSON envelope carrying the same message plus example application metadata. The bars use an illustrative LTE framing model. This is a reproducible model, not a traffic capture of a commercial messenger.",
+  "c1.naive": "Constructed JSON baseline",
   "c1.wick": "wick",
   "c1.batch": "Messages waiting in the outbox",
-  "c1.batch.hint":
-    "Framing is paid once per transmission, not once per message. This is where the fixed cost disappears.",
-  "c1.take":
-    "The same fact, on a fraction of the wire — and in one transmission instead of one per message.",
+  "c1.batch.hint": "Both formats share one transmission per batch in this model. Framing is counted once, and batching trades latency for lower fixed cost.",
+  "c1.take": "Fewer bytes, with the message intact. Compare payload and transport costs separately.",
   "c1.legend.payload": "JSON envelope",
   "c1.legend.tls": "TLS",
   "c1.legend.tcp": "TCP/IP",
@@ -73,11 +60,9 @@ export default {
   "c1.total": "whole outbox",
   "c1.tx.one": "1 transmission",
   "c1.tx.many": "1 transmission / {n} messages",
-
   "c2.idx": "02 — the codec",
   "c2.title": "Every word you need, in one byte.",
-  "c2.lead":
-    "wick does not compress prose after writing it — it declines to write prose at all. 126 words that emergency traffic actually uses get one-byte codes. Anything outside the dictionary is packed six bits to a character. A position fix travels as an 11 m delta from a known origin. A CRC-8 rides along, so a garbled frame is rejected without asking the network for anything.",
+  "c2.lead": "Exact lowercase dictionary words use compact tokens. Other text uses a six-bit alphabet with UTF-8 byte escapes, preserving Chinese, emoji, names, numbers and spacing. Position uses a quantised delta from a shared origin; CRC-8 detects corrupted frames.",
   "c2.compose": "Compose",
   "c2.type": "Message type",
   "c2.status": "Status",
@@ -89,60 +74,49 @@ export default {
   "c2.time": "Include timestamp",
   "c2.presets": "Try",
   "c2.frame": "Frame",
-  "c2.frame.hint": "Every byte is owned by a field. Nothing is wasted on padding.",
+  "c2.frame.hint": "Colours show field ownership; the receipt counts exact bits, including padding.",
   "c2.decoded": "Decoded on the other side",
   "c2.integrity": "Integrity",
   "c2.ok": "round-trip verified",
   "c2.fail": "round-trip failed",
   "c2.size": "frame size",
-  "c2.saved": "vs a mainstream envelope",
-  "c2.energy": "energy per message",
+  "c2.saved": "vs constructed JSON · same link",
+  "c2.energy": "modelled transmit energy",
   "c2.eff": "payload bytes",
-  "c2.normalise":
-    "wick transmits lower-case, single-spaced emergency text on purpose: it removes ambiguity and it removes bytes.",
+  "c2.normalise": "Protocol v2 preserves free text exactly, including case and whitespace. Position is quantised to 0.0001°; v1 frames can still be decoded.",
   "c2.worker": "Encoded off the main thread in a Web Worker.",
   "c2.burst": "Encode 20 000 frames",
   "c2.eff.note": "header excluded",
-
   "c3.idx": "03 — the budget",
   "c3.title": "1% is a budget, not a metaphor.",
-  "c3.lead":
-    "Say what you have left. The engine splits every transmission into a fixed wake-up cost and a per-byte cost, then reports what the remaining charge still buys — on each radio, because the answer changes completely.",
+  "c3.lead": "Say what you have left. The engine splits every transmission into a fixed wake-up cost and a per-byte cost, then reports what the remaining charge still buys — on each radio, because the answer changes completely.",
   "c3.resource": "Energy store",
   "c3.level": "Charge remaining",
   "c3.radio": "Radio",
   "c3.batch": "Outbox batch",
   "c3.eco": "1% mode",
-  "c3.eco.hint": "Product policy: drop position, time and prose. Keep the fact.",
-  "c3.msgs": "messages still affordable",
-  "c3.hours": "time to empty",
+  "c3.eco.hint": "Keep people, place, time and full text. Save interface work, not meaning.",
+  "c3.msgs": "transmit-only upper bound",
+  "c3.hours": "modelled time to empty",
   "c3.per": "cost per message",
   "c3.split": "fixed wake-up vs per-byte",
   "c3.fixed": "wake-up",
   "c3.linear": "per byte",
   "c3.rank": "The same charge, on every radio",
-  "c3.rank.note":
-    "Ranked by messages delivered, not by throughput. A radio that is fast and expensive is useless at 1%.",
-  "c3.rank.note2":
-    "A mainstream messenger cannot place a single one of its messages into a raw radio frame. That gap is not a tuning problem.",
-  "c3.trim.title": "What 1% mode gives up, and why",
-  "c3.trim.note":
-    "Dropping is a product decision, so it is written down rather than hidden. The first thing given up is the thing whose loss hurts least.",
-  "c3.trim.site":
-    "The same discipline is applied to this page: the 1% mode switch in the header strips the site itself — no fonts, no grain, no motion — and says so while it does it.",
-  "c3.est":
-    "Energy coefficients are illustrative estimates built on public measurements of mobile radio behaviour and typical duty cycles. They are declared as estimates, not datasheet values.",
+  "c3.rank.note": "Ranked by a transmit-only energy estimate, with each radio’s own framing. This does not establish hardware availability, range or successful delivery.",
+  "c3.rank.note2": "The model excludes radio-layer headers, retries, receive/scanning energy and fragmentation. Hardware measurements are still required.",
+  "c3.trim.title": "What 1% mode protects",
+  "c3.trim.note": "No message fields are removed automatically. Numbers, negation and context are part of the request. Use the explicit batch control to explore transmission savings.",
+  "c3.trim.site": "The same discipline is applied to this page: the 1% mode switch in the header strips the site itself — no fonts, no grain, no motion — and says so while it does it.",
+  "c3.est": "Illustrative energy coefficients, not calibrated measurements. Message counts exclude standby; time estimates include standby at 6 messages/hour. Byte savings are not measured battery savings.",
   "c3.duty": "at 6 messages / hour",
   "c3.drain": "{tx}% sending · {idle}% standby",
-  "c1.raw":
-    "On a raw radio there is no IP framing to amortise, so the win is the frame itself — {raw}× smaller than the same message in a mainstream envelope. That ratio is what decides whether a message fits in a LoRa or BLE frame at all.",
-
+  "c1.raw": "Payload-only comparison: {raw}× smaller than this constructed JSON envelope. Radio headers, encryption, acknowledgments and fragmentation must be added for a real deployment.",
   "c4.idx": "04 — offline",
   "c4.title": "Offline is not a failure state.",
-  "c4.lead":
-    "Writing a message never needs a network. It needs a queue. Compose with no signal, watch it persist, and watch the whole outbox leave in a single transmission the moment a link appears.",
+  "c4.lead": "Keep the whole message when the link disappears. Queue it locally, reload, and reconnect. Choose an explicitly labelled simulation or a local relay where another device decodes, stores and acknowledges the message.",
   "c4.compose": "Compose",
-  "c4.placeholder": "need water at sector 4",
+  "c4.placeholder": "Sector 4: 12 people need water. No injuries reported.",
   "c4.queue": "Queue it",
   "c4.outbox": "Outbox",
   "c4.empty": "Nothing waiting.",
@@ -151,14 +125,13 @@ export default {
   "c4.send": "Try to send",
   "c4.clear": "Clear outbox",
   "c4.queued": "queued",
-  "c4.sending": "sending",
-  "c4.sent": "sent",
-  "c4.failed": "waiting for signal",
-  "c4.nothing": "No link. The message stays on the device — that is the whole design.",
-  "c4.batched": "transmission carried",
-  "c4.real": "This is a real offline app",
-  "c4.real.body":
-    "A service worker caches this shell on your device. Turn off Wi-Fi, reload, and the page comes back with your outbox intact. The row below reports what it actually did — check it before you trust the sentence above.",
+  "c4.sending": "processing · awaiting receipt",
+  "c4.sent": "peer acknowledged",
+  "c4.failed": "unconfirmed · retained",
+  "c4.nothing": "Sending is paused. Messages remain on this device.",
+  "c4.batched": "completed payload",
+  "c4.real": "Local storage & offline readiness",
+  "c4.real.body": "After the shell is cached on localhost or HTTPS, it can reopen offline. IndexedDB retains the queue. An in-memory fallback does not survive a reload. A real relay still needs a local link.",
   "c4.sw": "service worker",
   "c4.sw.pending": "checking…",
   "c4.sw.active": "active · shell cached",
@@ -169,102 +142,70 @@ export default {
   "c4.store": "local store",
   "c4.store.idb": "IndexedDB",
   "c4.store.mem": "in-memory fallback",
-
   "c5.idx": "05 — the field",
   "c5.title": "Play it forward.",
-  "c5.lead":
-    "A minute-by-minute model of one team in the field: demand on a day–night cycle, outages that arrive whether or not you are ready, and the energy it takes to answer. Every scenario below is a declared simulation, not field data.",
+  "c5.lead": "A minute-by-minute model of one team in the field: demand on a day–night cycle, outages that arrive whether or not you are ready, and the energy it takes to answer. Every scenario below is a declared simulation, not field data.",
   "c5.charge": "charge over time",
   "c5.delivered": "messages delivered",
   "c5.wick": "wick",
-  "c5.naive": "mainstream messenger",
+  "c5.naive": "constructed JSON model",
   "c5.uptime": "link available",
   "c5.ratio": "wick delivered",
   "c5.wickAlive": "wick survived",
   "c5.naiveAlive": "baseline survived",
   "c5.tx": "transmissions",
-  "c5.note":
-    "Deterministic model · seeded · runs in a Web Worker so the page never stutters.",
-  "c5.declare":
-    "Declared simulation. The outage process, demand curve and energy coefficients are constructed for demonstration.",
+  "c5.note": "Deterministic model · seeded · runs in a Web Worker so the page never stutters.",
+  "c5.declare": "Declared simulation. The outage process, demand curve and energy coefficients are constructed for demonstration.",
   "c5.dead": "baseline silent at {h} h",
   "c5.seed": "{hours} h · seed {seed}",
   "c5.meta": "{resource} · {hours} h · link available {uptime}%",
-
   "c6.idx": "06 — who it is for",
   "c6.title": "The message that has to arrive.",
-  "c6.lead":
-    "wick is not a social network for bad days. It is the smallest tool that still works when the map has stopped being true.",
+  "c6.lead": "wick is not a social network for bad days. It is the smallest tool that still works when the map has stopped being true.",
   "c6.map": "Signal at the edge of a disaster",
-  "c6.map.note":
-    "Illustrative. Hops are drawn between fixed points to show the idea, not to claim coverage.",
-  "c6.declare":
-    "All people, places, numbers and coverage shown in this section are illustrative constructions for demonstration. No real person, location or message is represented, and nothing here claims that a route is safe or accessible.",
-
+  "c6.map.note": "Illustrative. Hops are drawn between fixed points to show the idea, not to claim coverage.",
+  "c6.declare": "All people, places, numbers and coverage shown in this section are illustrative constructions for demonstration. No real person, location or message is represented, and nothing here claims that a route is safe or accessible.",
   "c7.idx": "07 — how it is built",
   "c7.title": "Small on purpose.",
-  "c7.lead":
-    "A 1% project cannot ship a 3 MB framework. wick is plain ES modules, a static file server and nothing else — which is also why it can be audited, read and kept running for years.",
+  "c7.lead": "Plain ES modules, a reusable core and a static offline shell. An optional Node server adds a local relay without third-party runtime packages.",
   "c7.arch": "Architecture",
-  "c7.arch.note":
-    "Pure core logic, a thin rendering layer, and a Worker thread for anything that could block a frame.",
+  "c7.arch.note": "Pure core logic, a thin rendering layer, and a Worker thread for anything that could block a frame.",
   "c7.files": "Core files",
   "c7.budget": "Budget, measured",
-  "c7.budget.note":
-    "Measured on the shipped build, not estimated; the third column is gzip, except for the WOFF2 fonts, which are already compressed and so cannot shrink further. Reproduce it with tools/build-budget-data.py.",
-  "c7.budget.eco":
-    "Without the typefaces, everything you are reading is {kb} KB delivered. 1% mode requests no font bytes at all — the page you are looking at is its own demonstration.",
+  "c7.budget.note": "Measured file inventory, including both languages. Column three is the smaller of raw and gzip. The icon and generated table file are excluded; this is not total network traffic. Reproduce with tools/build-budget-data.py.",
+  "c7.budget.eco": "Without fonts, the measured file inventory is {kb} KB after gzip. Fresh 1% visits request no fonts. Actual transfer depends on server compression and cache state.",
   "c7.a11y": "Accessibility",
   "c7.perf": "Performance",
   "c7.ethos": "Boundaries",
   "c7.compare": "Closest existing work, and what wick adds",
-  "c7.compare.note":
-    "Similarity is not a fault. Failing to say how you differ is. Here is the honest accounting.",
+  "c7.compare.note": "Similarity is not a fault. Failing to say how you differ is. Here is the honest accounting.",
   "c7.ai": "How AI was used",
-  "c7.ai.note":
-    "Declared in full in AI_USAGE.md, including what was written by hand and where the models were wrong.",
+  "c7.ai.note": "Declared in full in AI_USAGE.md, including what was written by hand and where the models were wrong.",
   "c7.sim": "What is simulated",
-  "c7.sim.note":
-    "Everything that would require real university or field data is generated, and labelled as generated wherever it appears.",
-
+  "c7.sim.note": "Energy coefficients, radio range, field scenarios and the simulation link are models. The codec, local persistence and optional LAN peer acknowledgments execute real code. No hardware power or LoRa tests have been performed.",
   "c7.arch.core": "core · pure logic",
   "c7.arch.app": "ui · one region each",
   "c7.arch.workers": "workers · off the main thread",
   "c7.arch.edge": "edge · shell and type",
-
-  "c7.cmp1.title": "Briar, Bridgefy and the mesh messengers",
-  "c7.cmp1.body":
-    "These are the closest neighbours and they solve the transport problem well: they move traffic over Bluetooth or Wi-Fi Direct with no infrastructure. wick does not replace that transport. It sits above it and answers the question they leave open — what a message should weigh. A 340-byte JSON envelope cannot cross a LoRa frame at all; a 9-byte wick frame can, and that changes which radios are usable.",
+  "c7.cmp1.title": "Meshtastic · actual LoRa mesh",
+  "c7.cmp1.body": "Meshtastic already provides off-grid text, position, relaying and acknowledgments over LoRa. wick does not claim to replace it. The candidate contribution is an inspectable emergency codec and resource model; hardware integration and comparison remain future work. meshtastic.org/docs/overview/",
   "c7.cmp2.title": "Emergency SMS and cell broadcast",
-  "c7.cmp2.body":
-    "Government alerting reaches many people quickly, but it is one-way, requires working towers and backup power, and it cannot tell you that your neighbour is safe. wick is the other direction: small, two-way and survivable when the tower is on its last hour.",
+  "c7.cmp2.body": "SMS can be two-way and needs a working cellular network; cell broadcast is a separate one-to-many alert channel. wick explores local queues and compact reports. Its optional LAN relay is a demo, not a replacement for these systems.",
   "c7.cmp3.title": "Cost-aware messaging, and a budget engine you can argue with",
-  "c7.cmp3.body":
-    "Every message carries and displays its own byte and joule cost, and the engine ranks radios by messages-delivered rather than throughput. 1% mode then makes the trade-off explicit in product terms: it drops position, time and prose, and says so, because a receiver who knows what you need can act while a receiver who knows where you were cannot.",
+  "c7.cmp3.body": "Exact message round trips, explicit batch costs, urgent-first queues and separate simulated/peer-confirmed receipts. Low-power mode protects the full message. Model assumptions are exposed and are not battery measurements.",
   "c7.cmp4.title": "What it refuses to do",
-  "c7.cmp4.body":
-    "No location history, no contact scraping, no facial recognition, no ranking of people, no claim that any route is safe, and no pretending that a simulation is field data. Those are not limitations to be apologised for; they are the reason the tool can be trusted in the situation it is built for.",
-
-  "c7.a11y.1":
-    "Body text sits between 12:1 and 15:1 contrast on the dark plane; interactive labels never fall below 4.5:1.",
-  "c7.a11y.2":
-    "Every control is reachable and operable from the keyboard, with a visible focus ring and a skip link ahead of the chrome.",
-  "c7.a11y.3":
-    "prefers-reduced-motion removes reveals, the ember trace and every ambient animation, and renders the chart statically.",
-  "c7.a11y.4":
-    "Charts and the network diagram are described in text as well as drawn; the hex bench exposes its frame as a labelled list, not just coloured squares, and the field chart ships the same series as a 13-row data table.",
-  "c7.a11y.5":
-    "The page is fully usable with scripting absent: content is visible by default rather than staged behind an animation.",
-  "c7.a11y.6":
-    "The guided demo is opt-in and keyboard operable: arrows move between the seven steps, Escape closes it, and the section it is talking about is marked rather than merely scrolled to.",
-
-  "c7.perf.1": "Zero runtime dependencies. No third-party script is fetched, so there is no supply chain to audit.",
-  "c7.perf.2": "Two Web Workers take bulk encoding and scenario runs off the main thread; the frame time readout in the header proves it.",
+  "c7.cmp4.body": "No contact scraping or automatic decisions about rescue. Use fictional data for the plaintext LAN demo. Queues and inboxes are stored locally; relay memory expires after an hour and is cleared when the server stops.",
+  "c7.a11y.1": "Readable text, keyboard focus and touch targets are part of the interface; full accessibility certification is not claimed.",
+  "c7.a11y.2": "Every control is reachable and operable from the keyboard, with a visible focus ring and a skip link ahead of the chrome.",
+  "c7.a11y.3": "prefers-reduced-motion removes reveals, the ember trace and every ambient animation, and renders the chart statically.",
+  "c7.a11y.4": "Charts and the network diagram are described in text as well as drawn; the hex bench exposes its frame as a labelled list, not just coloured squares, and the field chart ships the same series as a 13-row data table.",
+  "c7.a11y.5": "Static content remains visible without JavaScript; interactive tools require JavaScript.",
+  "c7.a11y.6": "The guided demo is opt-in and keyboard operable: arrows move between the seven steps, Escape closes it, and the section it is talking about is marked rather than merely scrolled to.",
+  "c7.perf.1": "No third-party runtime packages or CDN requests. Browser and Node runtimes are still dependencies of the environment.",
+  "c7.perf.2": "Workers handle bulk encoding and subsequent scenario runs. The header measures the hero canvas script only, not total frame time or battery power.",
   "c7.perf.3": "Fonts are self-hosted and Latin-subset. 1% mode downloads no font bytes at all.",
   "c7.perf.4": "The whole shell is precached, so a reload with the network disabled is served from the device.",
-  "c7.perf.5":
-    "The AEAD is hand-written too — ChaCha20-Poly1305 per RFC 8439 — and checked against the standard's published vectors on every test run. Confidentiality costs 25 bytes, and it is printed as a receipt rather than hidden in a library call.",
-
+  "c7.perf.5": "The AEAD is hand-written too — ChaCha20-Poly1305 per RFC 8439 — and checked against the standard's published vectors on every test run. Confidentiality costs 25 bytes, and it is printed as a receipt rather than hidden in a library call.",
   "foot.deliver": "Submission",
   "foot.source": "Source",
   "foot.read": "Read",
@@ -272,56 +213,35 @@ export default {
   "foot.sources": "Sources & credits",
   "foot.license": "Licence",
   "foot.built": "Built for the 1% Battery brief, Engineering & Social Impact track.",
-  "foot.disclaim":
-    "Nothing on this site claims that a route is safe or fully accessible, and nothing here replaces professional judgement.",
-
+  "foot.disclaim": "Nothing on this site claims that a route is safe or fully accessible, and nothing here replaces professional judgement.",
   "sc.quake.label": "Earthquake · shelter cluster",
-  "sc.quake.blurb":
-    "Four responders, four villages, mains down, towers on backup power. Traffic spikes after every aftershock.",
+  "sc.quake.blurb": "Four responders, four villages, mains down, towers on backup power. Traffic spikes after every aftershock.",
   "sc.blackout.label": "City blackout · stairwell search",
-  "sc.blackout.blurb":
-    "One device walks thirty floors. Nothing reaches the street from inside, so messages hop phone to phone over BLE.",
+  "sc.blackout.blurb": "Illustrative BLE cost model for a building check. Phone-to-phone mesh is not implemented.",
   "sc.remote.label": "Remote clinic · no towers",
-  "sc.remote.blurb":
-    "Two hours from the nearest mast, running on a car battery and a LoRa relay up on the ridge.",
+  "sc.remote.blurb": "A modelled remote team using the selected power-bank resource and LoRa coefficients.",
   "sc.last1.label": "The last 1%",
-  "sc.last1.blurb":
-    "Everything else is gone: one bar, one phone, and one person who has to tell four families something true.",
-
+  "sc.last1.blurb": "Everything else is gone: one bar, one phone, and one person who has to tell four families something true.",
   "im.quake.title": "The first 72 hours",
-  "im.quake.body":
-    "Aftershocks keep breaking the link. Check-ins queue on the device and leave together the moment a bar appears.",
+  "im.quake.body": "Aftershocks keep breaking the link. Check-ins queue on the device and leave together the moment a bar appears.",
   "im.quake.when": "day 1 · link available about a third of the time",
-
   "im.blackout.title": "Thirty floors, no bars",
-  "im.blackout.body":
-    "Inside a concrete stairwell there is nothing to send with, so a message hops between neighbouring phones until one of them reaches the street.",
+  "im.blackout.body": "Inside a concrete stairwell there is nothing to send with, so a message hops between neighbouring phones until one of them reaches the street.",
   "im.blackout.when": "first hour · 60 m hops",
-
   "im.remote.title": "A clinic with no towers",
-  "im.remote.body":
-    "Two hours from the nearest mast, one ridge relay, and a supply list that has to arrive before the generator does.",
+  "im.remote.body": "Two hours from the nearest mast, one ridge relay, and a supply list that has to arrive before the generator does.",
   "im.remote.when": "routine · a few messages an hour, for weeks",
-
   "im.ferry.title": "Coastal ferry, out of range",
-  "im.ferry.body":
-    "Between two islands there is no coverage at all. wick holds the queue and sends the whole day at once when the boat lands.",
+  "im.ferry.body": "Between two islands there is no coverage at all. wick holds the queue and sends the whole day at once when the boat lands.",
   "im.ferry.when": "crossing · one transmission per port",
-
   "im.old.title": "A phone from 2014",
-  "im.old.body":
-    "The device that survives a disaster is usually the old one in a drawer. Nine-byte frames are cheap enough for it to run for days.",
+  "im.old.body": "The device that survives a disaster is usually the old one in a drawer. Nine-byte frames are cheap enough for it to run for days.",
   "im.old.when": "always · no app store, no account",
-
   "im.wildfire.title": "Evacuation, grid down",
-  "im.wildfire.body":
-    "Roads close faster than they can be mapped. A one-byte status token still gets through when a map cannot be sent at all.",
+  "im.wildfire.body": "Roads close faster than they can be mapped. A one-byte status token still gets through when a map cannot be sent at all.",
   "im.wildfire.when": "peak load · short, frequent, unambiguous",
-
-  /* 02b — the sealed frame. The receipt for confidentiality, printed in bytes. */
   "c2.seal.title": "Private costs 25 bytes",
-  "c2.seal.lead":
-    "The frame above is compact, checksummed, and readable by anyone holding the radio. That is fine for a beacon and not fine for a location. So there is a second layer, and it is priced the same way as everything else on this page.",
+  "c2.seal.lead": "The frame above is compact, checksummed, and readable by anyone holding the radio. That is fine for a beacon and not fine for a location. So there is a second layer, and it is priced the same way as everything else on this page.",
   "c2.seal.run": "Seal this frame",
   "c2.seal.again": "Seal the next one",
   "c2.seal.tamper": "Flip one bit in the tag",
@@ -329,50 +249,77 @@ export default {
   "c2.seal.wire": "On the wire",
   "c2.seal.roundtrip.ok": "opened again, byte for byte identical",
   "c2.seal.roundtrip.bad": "rejected — the tag did not match",
-  "c2.seal.hint":
-    "ChaCha20-Poly1305, RFC 8439, implemented in src/core/cipher.js and checked against the published test vectors in §2.3.2, §2.4.2, §2.5.2 and §2.8.2. The 9-byte header travels as associated data: a relay can read the algorithm and the counter, and cannot change either without breaking the tag. The key is exchanged offline and never leaves the device.",
+  "c2.seal.hint": "ChaCha20-Poly1305 per RFC 8439, checked against published vectors. The 9-byte header is authenticated associated data. This is an isolated experiment with a public demo key; key exchange and security auditing are not implemented. The LAN message relay does not use this encryption layer.",
   "c2.seal.counter": "message counter",
-  "c2.seal.note":
-    "A 6-byte check-in becomes 31 bytes sealed. Against the 354-byte chat envelope in section 01 that is still 11× smaller — privacy here is a 25-byte line item, not a rewrite.",
+  "c2.seal.note": "A 6 B example frame becomes 31 B sealed, adding 25 B. This is application-frame cost, not total link cost. The demo key is public; the LAN relay does not use this encryption layer.",
   "c2.seal.replay": "Replay the same sealed frame",
   "c2.seal.replay.bad": "rejected — counter already used",
-
   "c1.seal.plain": "plaintext frame",
   "c1.seal.alg": "algorithm id",
   "c1.seal.nonce": "nonce tail",
   "c1.seal.tag": "Poly1305 tag",
   "c1.seal.total": "sealed frame",
-
-  /* the guided demo — DEMO.md, made walkable */
   "demo.title": "Guided demo",
   "tour.title": "Guided demo · seven steps",
   "tour.prev": "← Back",
   "tour.next": "Next →",
   "tour.done": "Finish",
   "tour.exit": "Exit",
-  "tour.s1":
-    "Start here without touching anything. The rail on the left is this page's own battery: it drains from 100% to 1% as you read. The product and the page are the same argument.",
-  "tour.s2":
-    "Section 01. Drag the outbox slider to 8. Framing is paid per transmission, not per message, so batching removes the fixed cost: 354 → 266 bytes for the baseline and 67 → 13.6 for wick — 19.6×.",
-  "tour.s3":
-    "Section 02, the core of the demo. Type your own message and watch the frame rebuild byte by byte. Then press \"seal this frame\": confidentiality costs 25 bytes, and \"flip one bit\" shows a forged tag being rejected.",
-  "tour.s4":
-    "Section 03. Leave the level at 1% and switch the radio from LTE to LoRa. The ranking is by messages delivered, not throughput — in a 1% world, fast and expensive is worth nothing.",
-  "tour.s5":
-    "Section 04, the second most important one. Set the link to \"No link\", queue three messages, then switch to Edge and watch the whole queue leave in one transmission.",
-  "tour.s6":
-    "Section 05. Run the earthquake scenario, then export the result as a card. The card is drawn locally and carries the word \"modelled\" on it, because the scenario engine is a model and not a field trial.",
-  "tour.s7":
-    "Section 07, and the end of the demo. The payload table is measured from the real files by a script. The footer states the boundary the project does not cross: no route is claimed to be safe, and nothing here replaces professional judgement.",
-
+  "tour.s1": "The rail is an illustration, not battery telemetry. Open the message workbench to try complete text and delivery states.",
+  "tour.s2": "Move the batch slider. Both sides are constructed models; framing is counted once per batch. Read the current numbers instead of assuming a fixed improvement.",
+  "tour.s3": "Section 02, the core of the demo. Type your own message and watch the frame rebuild byte by byte. Then press \"seal this frame\": confidentiality costs 25 bytes, and \"flip one bit\" shows a forged tag being rejected.",
+  "tour.s4": "Change battery, radio and batch size. Counts are transmit-only upper bounds; duration also includes standby. 1% mode preserves all message fields.",
+  "tour.s5": "Queue Chinese or English text while paused. Simulation completes with a simulation label. For real receipt, connect a second device using the local relay and the same room code.",
+  "tour.s6": "Section 05. Run the earthquake scenario, then export the result as a card. The card is drawn locally and carries the word \"modelled\" on it, because the scenario engine is a model and not a field trial.",
+  "tour.s7": "Section 07, and the end of the demo. The payload table is measured from the real files by a script. The footer states the boundary the project does not cross: no route is claimed to be safe, and nothing here replaces professional judgement.",
   "a11y.table": "Read the numbers as a table",
   "c5.table.elapsed": "elapsed",
   "c5.share": "Export this result as a card",
   "c5.share.done": "PNG written",
-  "c5.share.hint":
-    "The card is drawn in a canvas on this device — no server, no upload, no image library, and it works with the network unplugged.",
-
+  "c5.share.hint": "The card is drawn in a canvas on this device — no server, no upload, no image library, and it works with the network unplugged.",
   "card.delivered": "MESSAGES DELIVERED",
   "card.hours": "HOURS STILL TALKING",
   "card.modelled": "Modelled over {hours} h with seed {seed} — a seeded simulation, not a field trial.",
+  "c3.keep.position": "Place",
+  "c3.keep.position.reason": "Keep a supplied position so the receiver can locate the request.",
+  "c3.keep.time": "Time",
+  "c3.keep.time.reason": "Keep timestamps so old reports can be distinguished from new ones.",
+  "c3.keep.detail": "Meaning",
+  "c3.keep.detail.reason": "Keep counts, negation and the full message; no first-word truncation.",
+  "c4.quick.safe": "Check in",
+  "c4.quick.water": "Need water",
+  "c4.quick.help": "Need help",
+  "c4.example.safe": "I am safe. Please confirm receipt.",
+  "c4.example.water": "Sector 4: 12 people need water. No injuries reported.",
+  "c4.example.help": "Need help. Please enter the location, number of people and situation.",
+  "c4.priority": "Send priority",
+  "c4.normal": "Normal",
+  "c4.urgent": "Urgent",
+  "c4.count": "{queued} queued · {sent} peer ACK · {simulated} simulated",
+  "c4.mode": "Delivery mode",
+  "c4.simulation": "Link simulation",
+  "c4.relayMode": "Real LAN relay",
+  "c4.room": "Shared room code · copy to the other device",
+  "c4.connect": "Connect",
+  "c4.disconnect": "Disconnect",
+  "c4.relay.connected": "Relay connected · keep this page open to receive",
+  "c4.relay.disconnected": "Not connected",
+  "c4.relay.retrying": "Link unavailable · reconnecting",
+  "c4.relayHelp": "Start tools/serve.cjs --lan. Open the displayed LAN address on both devices and enter the same code. HTTP demo traffic is not end-to-end encrypted. Use fictional messages. Offline caching requires localhost or HTTPS.",
+  "c4.localLink": "Local relay · peer ACK required",
+  "c4.paused": "Sending paused",
+  "c4.allowSend": "Allow sending",
+  "c4.pauseSend": "Pause sending",
+  "c4.modelRtt": "modelled {ms} ms",
+  "c4.simulated": "simulation complete",
+  "c4.retry": "No complete confirmation. Unconfirmed messages are retained; check the receiver and retry.",
+  "c4.awaitPeer": "A relay upload is not delivery. The other device must decode and store the frame before acknowledging it.",
+  "c4.simulationNote": "Simulated timing only. No message is transmitted to another device in this mode.",
+  "c4.boundary": "Urgent messages go first in the next batch. Simulation and peer acknowledgments are counted separately. Payload bytes exclude relay JSON, HTTP and radio overhead.",
+  "c4.inboxTitle": "Received on this device",
+  "c4.inboxEmpty": "No received messages in this room yet. Connect another device to try.",
+  "c4.received": "decoded & stored locally",
+  "c4.inputError": "Message retained in the input. Could not queue:",
+  "c4.storageError": "Storage failed. Check available storage before retrying.",
+  "c4.connectError": "Could not connect. Start the bundled relay server and use the same 16–80 character room code on both devices."
 };

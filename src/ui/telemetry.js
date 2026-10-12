@@ -69,7 +69,7 @@ export function initTelemetry() {
      actually takes — not the display refresh interval, which is pinned to the
      monitor and would read identical in every mode. Because 1% mode draws
      less often and with fewer strokes, its number is lower, not higher. */
-  setInterval(() => {
+  const sampleFrame = () => {
     const cost = getFrameCostMs();
     if (cost > 0) {
       frameSamples.push(cost);
@@ -84,7 +84,20 @@ export function initTelemetry() {
       frameEl.textContent = `${median.toFixed(2)} ms`;
       frameEl.dataset.state = median < 1 ? "ok" : median < 4 ? "warn" : "crit";
     }
-  }, 1400);
+  };
+  let sampleTimer;
+  const scheduleSamples = () => {
+    clearInterval(sampleTimer);
+    frameSamples = []; medianMs = 0;
+    if (document.hidden || document.documentElement.dataset.mode === "eco" || document.documentElement.dataset.still === "1") {
+      if (frameEl) frameEl.textContent = "—";
+      return;
+    }
+    sampleTimer = setInterval(sampleFrame, 1400);
+  };
+  document.addEventListener("wick:mode", scheduleSamples);
+  document.addEventListener("visibilitychange", scheduleSamples);
+  scheduleSamples();
 
 
 }

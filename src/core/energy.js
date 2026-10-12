@@ -144,7 +144,7 @@ export const RESOURCES = {
 export function energyPerMessage({ radioId, bytes, batchSize = 1 }) {
   const radio = RADIOS[radioId];
   if (!radio) throw new Error(`unknown radio: ${radioId}`);
-  const perMessageBytes = Math.ceil(bytes);
+  const perMessageBytes = bytes;
   const transmissionsPerMessage = 1 / Math.max(1, batchSize);
   const fixed = radio.fixedJ * transmissionsPerMessage;
   const linear = radio.perByteJ * perMessageBytes;

@@ -1,253 +1,124 @@
-/**
- * offline.js — section 04.
- *
- * This is not a mock-up. It writes to IndexedDB, keeps the outbox across
- * reloads, and drains the whole queue in one transmission when a link is
- * declared. Switch your machine's Wi-Fi off and this section still runs,
- * because the service worker has the shell and the store has the queue.
- */
+/** Offline-first composer, simulated link and optional real LAN relay. */
+import { $, on, escapeHtml, workerUnsupportedReason } from './dom.js';
+import { t, nf } from './i18n.js';
+import { openStore } from '../core/store.js';
+import { Outbox, LINKS, STATUS, composeText, simulatedTransport } from '../core/sync.js';
+import { RelayClient } from './relay.js';
 
-import { $, on, escapeHtml, debounce, workerUnsupportedReason } from "./dom.js";
-import { t, nf } from "./i18n.js";
-import { openStore } from "../core/store.js";
-import { Outbox, LINKS, STATUS } from "../core/sync.js";
-import { measure } from "../core/codec.js";
-import { framingFor } from "../core/baseline.js";
-import { state, setState, codecContext } from "./state.js";
-
-const STATUS_LABEL = {
-  [STATUS.queued]: "c4.queued",
-  [STATUS.sending]: "c4.sending",
-  [STATUS.sent]: "c4.sent",
-  [STATUS.failed]: "c4.failed",
-};
-
+const STATUS_LABEL = { queued: 'c4.queued', sending: 'c4.sending', sent: 'c4.sent', failed: 'c4.failed', simulated: 'c4.simulated' };
 export async function initOffline() {
-  const refs = {
-    form: $("#off-form"),
-    input: $("#off-input"),
-    list: $("#off-list"),
-    carried: $("#off-carried"),
-    count: $("#off-count"),
-    links: $("#off-links"),
-    send: $("#off-send"),
-    clear: $("#off-clear"),
-    hint: $("#off-hint"),
-    sw: $("#off-sw"),
-    storeEl: $("#off-store"),
-    device: $(".device"),
-    link: $("#dev-link"),
-    linkLabel: $("#dev-link-label"),
-    rtt: $("#dev-rtt"),
-  };
+  const refs = Object.fromEntries(['form','input','list','carried','count','links','send','clear','hint','sw','mode','room','connect','relay-status','inbox','priority','presets','error'].map(k => [k, $('#off-' + k)]));
   if (!refs.form) return;
-
-  /* ---- everything that does not need storage happens first ---------------
-     The panel is fully built and interactive before any storage is touched,
-     so a slow or blocked IndexedDB can never hold the interface hostage. */
-  if (refs.list) refs.list.innerHTML = `<p class="device__empty">${escapeHtml(t("c4.empty"))}</p>`;
-
-  refs.links.innerHTML = Object.values(LINKS)
-    .map(
-      (entry) =>
-        `<button type="button" data-link="${entry.id}">${escapeHtml(entry.label)}${
-          entry.rttMs ? ` · ${entry.rttMs} ms` : ""
-        }</button>`,
-    )
-    .join("");
-
-  let link = LINKS.offline;
-  let outbox = null;
-  const CAPTURE = new URL(location.href).searchParams.get("capture") === "1";
-
+  const device = $('.device');
   const store = await openStore();
-  outbox = new Outbox(store, { batchLimit: 12 });
+  const outbox = new Outbox(store);
   await outbox.hydrate();
-
-  if (refs.storeEl) {
-    refs.storeEl.textContent = t(store.kind === "indexeddb" ? "c4.store.idb" : "c4.store.mem");
-    refs.storeEl.dataset.state = store.kind === "indexeddb" ? "ok" : "";
-  }
-
-  /* ---- service worker state --------------------------------------------
-     This panel reports what the browser actually did, not what the code
-     intended. It used to print "active · shell cached" as soon as the
-     Service Worker API merely existed — which meant the page claimed a
-     cached shell while nothing had ever been cached, or even registered.
-     That is the one kind of sentence this project cannot afford, so the
-     label starts neutral and only becomes "active" when `ready` resolves,
-     with a deadline so a registration that never settles says so. */
+  let link = LINKS.offline, timer = 0, relayState = 'disconnected', mode = 'simulated';
+  const relay = new RelayClient(store, { onReceive: renderInbox, onState(next) { relayState = next; render(); } });
+  const storeEl = $('#off-store');
+  if (storeEl) { storeEl.textContent = t(store.kind === 'indexeddb' ? 'c4.store.idb' : 'c4.store.mem'); storeEl.dataset.state = store.kind === 'indexeddb' ? 'ok' : ''; }
+  refs.room.value = Array.from(crypto.getRandomValues(new Uint8Array(10)), b => b.toString(16).padStart(2, '0')).join('');
+  refs.mode.value = mode;
+  const CAPTURE = new URL(location.href).searchParams.get('capture') === '1';
   if (refs.sw) {
-    refs.sw.textContent = t("c4.sw.pending");
-    refs.sw.dataset.state = "pending";
-
-    // Deliberately not awaited: the outbox above is the useful part of this
-    // panel, and it must not wait on a worker that may take seconds to
-    // activate — or never answer at all, which is exactly what happened when
-    // this code trusted a `.catch()` on a promise that never rejects.
-    reportWorkerState(CAPTURE ? 60000 : 6000).then((state) => {
-      const KEY = {
-        active: "c4.sw.active",     // registered, in scope, and the whole shell is in the cache
-        registered: "c4.sw.registered", // registered and in scope, but the worker never answered
-        partial: "c4.sw.partial",   // registered, but the cache is incomplete or something failed
-        absent: "c4.sw.absent",     // nothing registered here yet
-        unsupported: "c4.sw.none",  // this context cannot host a worker at all
-      };
-      const shell = refs.sw.dataset.shell;
-      const label = t(KEY[state] || "c4.sw.none");
-      refs.sw.textContent = shell ? `${label} · ${shell}` : label;
-      refs.sw.dataset.state = state === "active" ? "ok" : state === "unsupported" ? "unsupported" : "partial";
-      refs.sw.dataset.verdict = state;
+    refs.sw.textContent = t('c4.sw.pending'); refs.sw.dataset.state = 'pending';
+    reportWorkerState(CAPTURE ? 60000 : 6000).then(verdict => {
+      const keys = { active: 'active', registered: 'registered', partial: 'partial', absent: 'absent', unsupported: 'none' };
+      refs.sw.dataset.verdict = verdict;
+      refs.sw.dataset.labelKey = 'c4.sw.' + (keys[verdict] || 'none');
+      refs.sw.dataset.state = verdict === 'active' ? 'ok' : verdict === 'unsupported' ? 'unsupported' : 'partial';
+      render();
     });
   }
-
-  /* ---- rendering ------------------------------------------------------- */
-  // The head of the queue (newest message) gets a distinct treatment so the
-  // reader can always tell what is about to go out. Bytes and status share one
-  // secondary line, which frees horizontal room for the message text, and a
-  // long queue collapses into a single "+ N older" row instead of scrolling.
-  const MAX_VISIBLE = 6;
-  const render = () => {
-    const items = outbox.items;
-    if (items.length === 0) {
-      refs.list.innerHTML = `<p class="device__empty">${escapeHtml(t("c4.empty"))}</p>`;
-    } else {
-      const head = items.slice().reverse();
-      const visible = head.slice(0, MAX_VISIBLE);
-      const older = head.length - visible.length;
-      refs.list.innerHTML =
-        visible
-          .map((item, i) => {
-            const label = describe(item.message);
-            const meta = `${item.bytes} B · ${t(STATUS_LABEL[item.status])}`;
-            const cls = i === 0 ? "msg msg--head" : i === 1 ? "msg msg--open" : "msg";
-            return (
-              `<div class="${cls}" data-status="${item.status}">` +
-              `<span class="msg__text">${escapeHtml(label)}</span>` +
-              `<span class="msg__meta">${escapeHtml(meta)}</span></div>`
-            );
-          })
-          .join("") +
-        (older > 0
-          ? `<div class="msg msg--more">+ ${escapeHtml(t("c4.older", { n: older }))}</div>`
-          : "");
-    }
-    if (refs.count) refs.count.textContent = `${nf(outbox.queuedCount)} queued · ${nf(outbox.sent)} sent`;
-    if (refs.hint) {
-      refs.hint.textContent = link.available ? t("c1.batch.hint") : t("c4.nothing");
-    }
-  };
-
-  const setLink = (next) => {
+  function render() {
+    const items = outbox.items.slice().sort((a,b) => (b.priority || 1) - (a.priority || 1) || b.createdAt - a.createdAt);
+    refs.list.innerHTML = items.length ? items.map(item => `<div class="msg${item.priority === 3 ? ' msg--urgent' : ''}" data-status="${item.status}"><span class="msg__text">${escapeHtml(describe(item.message))}</span><span class="msg__meta">${item.priority === 3 ? escapeHtml(t('c4.urgent')) + ' · ' : ''}${item.bytes} B · ${escapeHtml(t(STATUS_LABEL[item.status] || 'c4.queued'))}</span></div>`).join('') : `<p class="device__empty">${escapeHtml(t('c4.empty'))}</p>`;
+    refs.count.textContent = t('c4.count', { queued: outbox.items.length, sent: outbox.sent, simulated: outbox.simulated });
+    refs.hint.textContent = t(outbox.error ? 'c4.retry' : !link.available ? 'c4.nothing' : mode === 'relay' ? 'c4.awaitPeer' : 'c4.simulationNote');
+    refs.send.disabled = !!outbox.active || !link.available || (mode === 'relay' && !relay.connected);
+    refs.clear.disabled = !!outbox.active;
+    refs['relay-status'].textContent = t('c4.relay.' + relayState);
+    refs.room.disabled = relay.connected;
+    refs.connect.textContent = t(relay.connected ? 'c4.disconnect' : 'c4.connect');
+    $('#off-relay-controls').hidden = mode !== 'relay';
+    if (refs.sw?.dataset.labelKey) refs.sw.textContent = t(refs.sw.dataset.labelKey) + (refs.sw.dataset.shell ? ' · ' + refs.sw.dataset.shell : '');
+    if (storeEl) storeEl.textContent = t(store.kind === 'indexeddb' ? 'c4.store.idb' : 'c4.store.mem');
+    for (const button of refs.links.children) button.setAttribute('aria-pressed', String(button.dataset.link === link.id));
+    $('#dev-link-label').textContent = mode === 'relay' ? t(link.available ? 'c4.localLink' : 'c4.paused') : t('c4.simulation') + ' · ' + link.label;
+    $('#dev-link').dataset.link = link.id;
+    $('#dev-link .dot').dataset.state = link.available ? 'ok' : 'crit';
+    $('#dev-rtt').textContent = mode === 'simulated' && link.rttMs ? t('c4.modelRtt', { ms: link.rttMs }) : '';
+  }
+  async function renderInbox() {
+    const items = (await store.all('inbox')).filter(i => !relay.room || i.id.startsWith(relay.room + ':')).sort((a,b) => b.receivedAt - a.receivedAt).slice(0, 8);
+    refs.inbox.innerHTML = items.length ? items.map(i => `<div class="msg"><span class="msg__text">${escapeHtml(describe(i.message))}</span><span class="msg__meta">${escapeHtml(t('c4.received'))}</span></div>`).join('') : `<p class="hint">${escapeHtml(t('c4.inboxEmpty'))}</p>`;
+  }
+  function paintLinks() {
+    const entries = mode === 'relay' ? [LINKS.offline, LINKS.good] : Object.values(LINKS);
+    refs.links.innerHTML = entries.map(entry => `<button type="button" data-link="${entry.id}">${escapeHtml(mode === 'relay' ? t(entry.available ? 'c4.allowSend' : 'c4.pauseSend') : entry.label)}</button>`).join('');
+  }
+  function setLink(next) {
     link = next;
-    for (const button of refs.links.children) {
-      button.setAttribute("aria-pressed", String(button.dataset.link === link.id));
-    }
-    if (refs.link) {
-      refs.link.dataset.link = link.id;
-      refs.link.querySelector(".dot").dataset.state =
-        link.id === "offline" ? "crit" : link.id === "edge" ? "warn" : "ok";
-    }
-    if (refs.linkLabel) refs.linkLabel.textContent = link.label;
-    if (refs.rtt) refs.rtt.textContent = link.rttMs ? `${link.rttMs} ms · ${link.bytesPerSecond} B/s` : "—";
+    if (!next.available) { clearTimeout(timer); outbox.cancel(); }
     render();
-    if (link.available) scheduleFlush();
-  };
-
-  /* ---- compose --------------------------------------------------------- */
-  refs.form.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const text = refs.input.value.trim();
-    if (!text) return;
-    const message =
-      text.split(/\s+/).length === 1
-        ? { type: "checkin", status: dictionaryWord(text) }
-        : { type: "sitrep", text };
-    const measurement = measure(message, codecContext());
-    await outbox.enqueue(message, { bytes: measurement.size });
-    refs.input.value = "";
-    render();
-    if (link.available) scheduleFlush();
-  });
-
-  /* ---- draining -------------------------------------------------------- */
-  let timer = 0;
-  function scheduleFlush() {
+    if (next.available) scheduleFlush();
+  }
+  function scheduleFlush(urgent = false) {
     clearTimeout(timer);
-    timer = setTimeout(() => flush(), 420);
+    timer = setTimeout(() => flush(), urgent ? 0 : 420);
   }
-
   async function flush() {
-    if (!link.available || outbox.queuedCount === 0) return;
-    if (refs.device) refs.device.dataset.busy = "true";
-    const before = outbox.queuedCount;
-    const result = await outbox.flush(link);
-    if (refs.device) refs.device.dataset.busy = "false";
-
-    const framing = framingFor(state.radioId || "lte").wick;
-    const wire = result.bytes + framing;
-    if (refs.carried) refs.carried.textContent = nf(wire);
-    setState({ lastTransmissionBytes: wire }, "offline");
-
-    // The batched saving is the whole point, so the HUD reports it.
-    const perMessage = before > 0 ? wire / before : wire;
-    const naivePerMessage = 354;
-    setState(
-      { bytesSaved: Math.max(0, Math.round((naivePerMessage - perMessage) * before)) },
-      "saved",
-    );
-    render();
+    if (!link.available || !outbox.queuedCount || outbox.active) return;
+    if (mode === 'relay' && !relay.connected) return;
+    device.dataset.busy = 'true';
+    try {
+      const result = await outbox.flush(() => link, mode === 'relay' ? relay : simulatedTransport);
+      refs.carried.textContent = nf(result.bytes);
+    } catch { refs.error.textContent = t('c4.storageError'); }
+    finally { device.dataset.busy = 'false'; render(); }
   }
-
-  refs.send.addEventListener("click", () => flush());
-  refs.clear.addEventListener("click", async () => {
-    await outbox.clear();
-    render();
+  refs.form.addEventListener('submit', async event => {
+    event.preventDefault(); refs.error.textContent = '';
+    if (!refs.input.value.trim()) return;
+    try {
+      const urgent = refs.priority.value === '3';
+      await outbox.enqueue(composeText(refs.input.value), { priority: urgent ? 3 : 1 });
+      refs.input.value = ''; render();
+      if (link.available) scheduleFlush(urgent);
+    } catch (error) { refs.error.textContent = t('c4.inputError') + ' ' + error.message; }
   });
-  on(refs.links, "click", "[data-link]", (_, el) => setLink(LINKS[el.dataset.link]));
-
-  /* ---- follow the outside world --------------------------------------- */
-  const followBrowser = debounce(() => {
-    if (navigator.onLine === false && link.id !== "offline") setLink(LINKS.offline);
-  }, 200);
-  window.addEventListener("offline", followBrowser);
-  window.addEventListener("online", followBrowser);
-
-  document.addEventListener("wick:lang", render);
-
-  setLink(navigator.onLine === false ? LINKS.offline : LINKS.edge);
-  render();
+  on(refs.presets, 'click', '[data-compose]', (_, button) => {
+    refs.input.value = t('c4.example.' + button.dataset.compose); refs.input.focus();
+    refs.priority.value = button.dataset.compose === 'help' ? '3' : '1';
+  });
+  refs.mode.addEventListener('change', () => {
+    outbox.cancel(); clearTimeout(timer); relay.disconnect(); mode = refs.mode.value;
+    paintLinks(); setLink(LINKS.offline);
+  });
+  refs.connect.addEventListener('click', async () => {
+    refs.error.textContent = '';
+    if (relay.connected) { relay.disconnect(); setLink(LINKS.offline); return; }
+    refs.connect.disabled = true;
+    try { await relay.connect(refs.room.value.trim()); await renderInbox(); setLink(LINKS.good); }
+    catch { refs.error.textContent = t('c4.connectError'); relay.disconnect(); }
+    finally { refs.connect.disabled = false; render(); }
+  });
+  on(refs.links, 'click', '[data-link]', (_, button) => setLink(LINKS[button.dataset.link]));
+  refs.send.addEventListener('click', flush);
+  refs.clear.addEventListener('click', async () => { try { await outbox.clear(); } catch { refs.error.textContent = t('c4.storageError'); } });
+  outbox.onChange(render);
+  window.addEventListener('offline', () => setLink(LINKS.offline));
+  window.addEventListener('online', () => { if (mode === 'relay' && relay.connected) setLink(LINKS.good); });
+  window.addEventListener('pagehide', () => { clearTimeout(timer); outbox.cancel(); relay.disconnect(); });
+  document.addEventListener('wick:lang', () => { paintLinks(); render(); renderInbox(); });
+  paintLinks(); render(); await renderInbox();
 }
-
 function describe(message) {
-  if (message.type === "checkin") return `checkin · ${message.status}`;
-  if (message.type === "need") return `need · ${message.need}`;
-  if (message.type === "sitrep") return message.text;
+  if (message.type === 'sitrep') return message.text;
+  if (message.type === 'checkin') return 'checkin · ' + message.status;
+  if (message.type === 'need') return 'need · ' + message.need;
   return message.type;
 }
-
-/** Anything outside the dictionary is still sendable — it just costs more. */
-function dictionaryWord(text) {
-  const word = text.toLowerCase().replace(/[^a-z]/g, "");
-  return ["safe", "ok", "injured", "trapped", "stable", "unknown", "moving", "arrived", "stopped", "waiting"].includes(
-    word,
-  )
-    ? word
-    : "ok";
-}
-
-/**
- * Ask the browser what the offline shell actually did, and answer honestly.
- *
- * `navigator.serviceWorker.ready` never rejects — it simply never settles if
- * nothing was ever registered — so a plain `.catch()` reports success for a
- * Service Worker that does not exist. The deadline is what makes this
- * trustworthy: if registration did not happen, the panel says unavailable
- * instead of inheriting a hopeful default.
- *
- * Returns "active" only when a registration exists *and* its scope covers
- * this page *and* the worker answers on the message channel.
- */
 async function reportWorkerState(timeoutMs = 6000) {
   // Decided before the deadline, not after it: where no worker can exist, the
   // answer is "unavailable" immediately, rather than six seconds of the page

@@ -26,8 +26,8 @@ def measure(paths):
     for path in paths:
         data = path.read_bytes()
         raw += len(data)
-        # WOFF2 is already compressed; gzipping it again only adds bytes, so
-        # the smaller of the two is what a visitor actually downloads.
+        # File-size comparison only: the smaller of raw and gzip is reported.
+        # Actual transfer depends on the server, cache and request headers.
         compressed += min(len(data), len(gzip.compress(data, 9, mtime=0)))
     return raw, compressed
 
@@ -68,11 +68,9 @@ def main():
         if not files:
             continue
         if name == "copy":
-            # Only one language table is ever fetched, so report the larger of
-            # the two rather than the sum: that is the worst case per visitor.
-            per_file = [measure([f]) for f in files]
-            raw, compressed = max(per_file, key=lambda pair: pair[1])
-            label = f"copy (1 of {len(files)} languages)"
+            # The worker precaches both languages, so count both files.
+            raw, compressed = measure(files)
+            label = f"copy ({len(files)} languages, including precache)"
         else:
             raw, compressed = measure(files)
             label = name if len(files) == 1 else f"{name} ({len(files)})"
@@ -125,13 +123,13 @@ def main():
     OUT.write_text("\n".join(lines), encoding="utf-8")
     print(f"wrote {OUT.relative_to(ROOT)}")
     print(f"  total raw        {total_raw:>8,} B")
-    print(f"  total delivered  {total_gzip:>8,} B")
+    print(f"  total gzip files {total_gzip:>8,} B")
     print(f"  javascript       {js_gzip:>8,} B")
     print(f"  fonts            {font_gzip:>8,} B  (1% mode skips these entirely)")
     print(f"  without fonts    {total_gzip - font_gzip:>8,} B")
     for row in rows:
         print(
-            "  - %-26s %8d raw / %7d delivered  %5s%%"
+            "  - %-26s %8d raw / %7d gzip       %5s%%"
             % (row["name"], row["raw"], row["gzip"], row["share"])
         )
 

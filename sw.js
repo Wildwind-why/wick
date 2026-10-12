@@ -7,7 +7,7 @@
  * to go, including the page that describes it.
  */
 
-const VERSION = "wick-v2";
+const VERSION = "wick-v2.1";
 
 const SHELL = [
   "./",
@@ -51,6 +51,7 @@ const SHELL = [
   "./src/ui/craft-data.js",
   "./src/ui/budget-data.js",
   "./src/ui/offline.js",
+  "./src/ui/relay.js",
   "./src/workers/codec.worker.js",
   "./src/workers/sim.worker.js",
 ];
@@ -134,7 +135,7 @@ self.addEventListener("activate", (event) => {
   event.waitUntil(
     caches
       .keys()
-      .then((keys) => Promise.all(keys.filter((key) => key !== VERSION).map((key) => caches.delete(key))))
+      .then((keys) => Promise.all(keys.filter((key) => key.startsWith("wick-") && key !== VERSION).map((key) => caches.delete(key))))
       .then(() => self.clients.claim()),
   );
 });
@@ -145,6 +146,11 @@ self.addEventListener("fetch", (event) => {
 
   const url = new URL(request.url);
   if (url.origin !== location.origin) return;
+  // Never cache dynamic messages, room-specific receipts, or other apps on this origin.
+  // Cache API ignores HTTP Cache-Control unless we enforce this boundary here.
+  if (request.cache === "no-store" || request.headers.has("x-wick-room")) return;
+  const scopePath = new URL("./", self.location.href).pathname;
+  if (url.pathname.startsWith(scopePath + "api/")) return;
 
   /*
    * Navigations: serve the shell when the visitor asked for the shell.
@@ -189,7 +195,11 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // Everything else: cache first, then network, then whatever we have.
+  const isAsset = SHELL.some(entry => new URL(entry, self.location.href).pathname === url.pathname)
+    || url.pathname.startsWith(scopePath + "assets/fonts/")
+    || url.pathname === scopePath + "assets/css/fonts.css";
+  if (!isAsset) return;
+  // Application assets only: cache first, then network.
   event.respondWith(
     caches.match(request).then((cached) => {
       if (cached) return cached;

@@ -1,149 +1,131 @@
-/**
- * sync.js — store-and-forward, the offline half of the product.
- *
- * Writing a message never requires a network. It requires a queue.
- *
- *   compose → persisted locally → QUEUED
- *            (link returns) → batch → one transmission → SENT
- *
- * Because the whole outbox drains in a single transmission, the fixed radio
- * cost is paid once instead of once per message. That is the arithmetic that
- * makes 1% last: ten check-ins cost roughly one check-in's worth of radio
- * wake-ups.
- *
- * Works with any object store implementing put/get/all/remove.
- */
+/** Persistent outbox. Simulated receipts are distinct from peer acknowledgments. */
+import { newId } from './store.js';
+import { measure } from './codec.js';
 
-import { newId } from "./store.js";
-
-export const STATUS = {
-  queued: "queued",
-  sending: "sending",
-  sent: "sent",
-  failed: "failed",
+export const STATUS = { queued: 'queued', sending: 'sending', sent: 'sent', failed: 'failed', simulated: 'simulated' };
+export function composeText(text) {
+  if (typeof text !== 'string' || !text.trim()) throw new Error('empty message');
+  return { type: 'sitrep', text };
+}
+export const simulatedTransport = {
+  mode: 'simulated',
+  async send(batch, { link, signal }) {
+    const bytes = batch.reduce((sum, item) => sum + item.bytes, 0);
+    await delay(Math.min(1400, Math.max(240, bytes / Math.max(1, link.bytesPerSecond) * 1000)), signal);
+    return { acknowledged: batch.map(item => item.id) };
+  },
 };
-
 export class Outbox {
-  /**
-   * @param {object} store   openStore() result
-   * @param {object} [opts]
-   * @param {number} [opts.batchLimit] messages per transmission
-   */
   constructor(store, { batchLimit = 12 } = {}) {
-    this.store = store;
-    this.batchLimit = batchLimit;
-    this.items = [];
-    this.listeners = new Set();
-    this.sent = 0;
-    this.transmissions = 0;
-    this.wireBytes = 0;
+    this.store = store; this.batchLimit = batchLimit;
+    this.items = []; this.listeners = new Set();
+    this.sent = 0; this.simulated = 0; this.transmissions = 0; this.wireBytes = 0;
+    this.error = null; this.active = null; this.controller = null;
   }
-
-  onChange(fn) {
-    this.listeners.add(fn);
-    return () => this.listeners.delete(fn);
-  }
-
-  #emit() {
-    for (const fn of this.listeners) fn(this);
-  }
-
+  onChange(fn) { this.listeners.add(fn); return () => this.listeners.delete(fn); }
+  emit() { for (const fn of this.listeners) fn(this); }
   async hydrate() {
-    const stored = await this.store.all("outbox");
-    this.items = stored.sort((a, b) => a.createdAt - b.createdAt);
-    this.#emit();
-    return this.items;
+    const stored = await this.store.all('outbox');
+    const legacy = stored.filter(i => i.status === STATUS.sent || i.status === STATUS.simulated);
+    if (legacy.length) await this.store.complete(legacy.map(i => ({ ...i, status: STATUS.simulated, deliveryMode: 'simulated' })));
+    this.items = stored.filter(i => !legacy.includes(i)).sort((a, b) => a.createdAt - b.createdAt);
+    for (const item of this.items) {
+      if (item.status === STATUS.sending) {
+        item.status = STATUS.queued;
+        await this.store.put('outbox', item);
+      }
+    }
+    const archive = await this.store.all('archive');
+    this.sent = archive.filter(i => i.deliveryMode === 'relay' && i.status === STATUS.sent).length;
+    this.simulated = archive.length - this.sent;
+    this.emit(); return this.items;
   }
-
-  /** Compose. Never throws for lack of a network — that is the point. */
-  async enqueue(message, { bytes = 0 } = {}) {
+  async enqueue(message, { priority = 1 } = {}) {
+    const m = measure(message);
+    if (!m.ok) throw new Error(m.error || 'message failed round-trip validation');
     const item = {
-      id: newId("msg"),
-      message,
-      bytes,
-      status: STATUS.queued,
-      attempts: 0,
-      createdAt: Date.now(),
-      sentAt: null,
+      id: newId('msg'), message: structuredClone(message), bytes: m.size,
+      frame: Array.from(m.bytes), status: STATUS.queued,
+      priority: priority === 3 ? 3 : 1, attempts: 0, createdAt: Date.now(), sentAt: null,
     };
-    this.items.push(item);
-    await this.store.put("outbox", item);
-    this.#emit();
-    return item;
+    await this.store.put('outbox', item); this.items.push(item); this.emit(); return item;
   }
-
   get pending() {
-    return this.items.filter((i) => i.status === STATUS.queued || i.status === STATUS.failed);
+    return this.items.filter(i => i.status === STATUS.queued || i.status === STATUS.failed)
+      .sort((a, b) => (b.priority || 1) - (a.priority || 1) || a.createdAt - b.createdAt);
   }
-
-  get queuedCount() {
-    return this.pending.length;
+  get queuedCount() { return this.pending.length; }
+  get queuedBytes() { return this.pending.reduce((sum, i) => sum + i.bytes, 0); }
+  cancel() { this.controller?.abort(); }
+  flush(linkOrGetter, transport = simulatedTransport) {
+    if (this.active) return this.active;
+    this.controller = new AbortController();
+    this.active = this.drain(linkOrGetter, transport, this.controller.signal)
+      .finally(() => { this.active = null; this.controller = null; this.emit(); });
+    return this.active;
   }
-
-  get queuedBytes() {
-    return this.pending.reduce((sum, i) => sum + i.bytes, 0);
-  }
-
-  /**
-   * Drain the outbox through a link.
-   *
-   * @param {object} link   { available:boolean, bytesPerSecond:number, label:string }
-   * @returns {Promise<{sent:number, transmissions:number, bytes:number}>}
-   */
-  async flush(link) {
-    if (!link?.available) {
-      for (const item of this.pending) item.status = STATUS.failed;
-      this.#emit();
-      return { sent: 0, transmissions: 0, bytes: 0, blocked: true };
+  async drain(linkOrGetter, transport, signal) {
+    const getLink = typeof linkOrGetter === 'function' ? linkOrGetter : () => linkOrGetter;
+    const result = { sent: 0, simulated: 0, transmissions: 0, bytes: 0, mode: transport.mode };
+    this.error = null;
+    while (this.pending.length && getLink()?.available && !signal.aborted) {
+      const batch = this.pending.slice(0, this.batchLimit);
+      try {
+        for (const item of batch) {
+          const m = measure(item.message);
+          if (!m.ok) throw new Error('message failed round-trip validation');
+          item.frame = Array.from(m.bytes); item.bytes = m.size;
+          item.status = STATUS.sending; item.attempts += 1;
+          await this.store.put('outbox', item);
+        }
+        this.emit();
+        const receipt = await transport.send(batch, { link: getLink(), signal });
+        if (signal.aborted || !getLink()?.available) throw new Error('link interrupted; awaiting confirmation');
+        const ids = new Set(receipt.acknowledged || []);
+        const confirmed = batch.filter(item => ids.has(item.id)).map(item => ({
+          ...item, status: transport.mode === 'relay' ? STATUS.sent : STATUS.simulated,
+          deliveryMode: transport.mode, sentAt: Date.now(),
+        }));
+        if (confirmed.length) {
+          await this.store.complete(confirmed);
+          const done = new Set(confirmed.map(i => i.id));
+          this.items = this.items.filter(i => !done.has(i.id));
+          const bytes = confirmed.reduce((sum, i) => sum + i.bytes, 0);
+          result.bytes += bytes; result.transmissions += 1;
+          result[transport.mode === 'relay' ? 'sent' : 'simulated'] += confirmed.length;
+          this[transport.mode === 'relay' ? 'sent' : 'simulated'] += confirmed.length;
+          this.transmissions++; this.wireBytes += bytes;
+        }
+        if (confirmed.length !== batch.length) throw new Error('peer confirmation incomplete');
+      } catch (error) {
+        this.error = error.message;
+        for (const item of batch) {
+          if (!this.items.includes(item)) continue;
+          item.status = STATUS.failed; await this.store.put('outbox', item);
+        }
+        this.emit(); return { ...result, error: this.error };
+      }
+      this.emit();
     }
-
-    const batch = this.pending.slice(0, this.batchLimit);
-    if (batch.length === 0) return { sent: 0, transmissions: 0, bytes: 0 };
-
-    for (const item of batch) {
-      item.status = STATUS.sending;
-      item.attempts += 1;
-      this.#emit();
-    }
-
-    const bytes = batch.reduce((sum, i) => sum + i.bytes, 0);
-    const seconds = link.bytesPerSecond > 0 ? bytes / link.bytesPerSecond : 0.2;
-    await delay(Math.min(1400, Math.max(240, seconds * 1000)));
-
-    for (const item of batch) {
-      item.status = STATUS.sent;
-      item.sentAt = Date.now();
-      await this.store.put("outbox", item);
-      await this.store.put("archive", item);
-    }
-
-    this.items = this.items.filter((i) => i.status !== STATUS.sent);
-    this.sent += batch.length;
-    this.transmissions += 1;
-    this.wireBytes += bytes;
-    this.#emit();
-    return { sent: batch.length, transmissions: 1, bytes };
+    return { ...result, blocked: !getLink()?.available };
   }
-
-  /** Everything waiting can be cleared when the operator chooses to. */
   async clear() {
-    for (const item of this.items) await this.store.remove("outbox", item.id);
-    this.items = [];
-    this.#emit();
+    this.cancel(); if (this.active) await this.active;
+    for (const item of this.items) await this.store.remove('outbox', item.id);
+    this.items = []; this.error = null; this.emit();
   }
 }
-
-function delay(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+export function delay(ms, signal) {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) return reject(new Error('cancelled'));
+    const abort = () => { clearTimeout(timer); reject(new Error('cancelled')); };
+    const timer = setTimeout(() => { signal?.removeEventListener('abort', abort); resolve(); }, ms);
+    signal?.addEventListener('abort', abort, { once: true });
+  });
 }
-
-/**
- * Link models used by the demo and the simulation. `available:false` is not a
- * failure state — it is the normal state in the field.
- */
 export const LINKS = {
-  offline: { id: "offline", label: "No link", available: false, bytesPerSecond: 0, rttMs: 0 },
-  edge: { id: "edge", label: "Edge / 2G", available: true, bytesPerSecond: 140, rttMs: 900 },
-  weak: { id: "weak", label: "Weak LTE", available: true, bytesPerSecond: 900, rttMs: 420 },
-  good: { id: "good", label: "Good LTE", available: true, bytesPerSecond: 6000, rttMs: 90 },
+  offline: { id: 'offline', label: 'No link', available: false, bytesPerSecond: 0, rttMs: 0 },
+  edge: { id: 'edge', label: 'Edge / 2G', available: true, bytesPerSecond: 140, rttMs: 900 },
+  weak: { id: 'weak', label: 'Weak LTE', available: true, bytesPerSecond: 900, rttMs: 420 },
+  good: { id: 'good', label: 'Good LTE', available: true, bytesPerSecond: 6000, rttMs: 90 },
 };

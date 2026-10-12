@@ -23,18 +23,18 @@ import { naiveWire, batched, framingFor, FRAME_LIMIT } from "./baseline.js";
 export const ECO_TRIMMING = [
   {
     key: "position",
-    label: "Position fix",
-    reason: "A search team can grid a known sector. A 11 m fix is a luxury.",
+    label: "c3.keep.position",
+    reason: "c3.keep.position.reason",
   },
   {
     key: "time",
-    label: "Timestamp",
-    reason: "Ordering is carried by arrival sequence, not by a clock.",
+    label: "c3.keep.time",
+    reason: "c3.keep.time.reason",
   },
   {
     key: "detail",
-    label: "Free-text detail",
-    reason: "One dictionary token says the essential thing in one byte.",
+    label: "c3.keep.detail",
+    reason: "c3.keep.detail.reason",
   },
 ];
 
@@ -47,24 +47,8 @@ export function planMessage(message, context = {}, eco = false) {
   const plan = { ...message, position: message.position, time: message.time };
   const dropped = [];
 
-  if (eco) {
-    if (plan.position) {
-      dropped.push("position");
-      delete plan.position;
-    }
-    if (Number.isFinite(plan.time)) {
-      dropped.push("time");
-      delete plan.time;
-    }
-    if (plan.type === "sitrep" && plan.text) {
-      // Keep the message, lose the prose: the first dictionary token carries it.
-      const first = plan.text.trim().split(/\s+/)[0];
-      dropped.push("detail");
-      plan.type = "checkin";
-      plan.status = first.toLowerCase();
-      delete plan.text;
-    }
-  }
+  // Eco mode reduces interface work, never message meaning.
+  // Batching remains an explicit control; no automatic payload truncation.
 
   const result = measure(plan, context);
   const naive = naiveWire(message);
@@ -91,7 +75,7 @@ export function compare({
   const framing = framingFor(radioId);
 
   const wickBytesPerMessage = wick.size;
-  const naiveBytesPerMessage = naive.total;
+  const naiveBytesPerMessage = naive.payload;
 
   // Store-and-forward: the framing cost is paid once for the whole batch.
   const wickBatchBytes = batched(wickBytesPerMessage, batchSize, framing.wick);
@@ -133,10 +117,10 @@ export function compare({
       sim: naiveSim,
     },
     advantage: ratio,
-    bytesSavedPerMessage: naiveBytesPerMessage - wickBytesPerMessage,
+    bytesSavedPerMessage: naiveBatchBytes - wickBatchBytes,
     bytesSavedPct:
-      naiveBytesPerMessage > 0
-        ? 1 - wickBytesPerMessage / naiveBytesPerMessage
+      naiveBatchBytes > 0
+        ? 1 - wickBatchBytes / naiveBatchBytes
         : 0,
     framing,
     /**
@@ -158,7 +142,7 @@ export function rankRadios({ bytes, resourceId, levelPct, batchSize = 1 }) {
       const sim = simulate({
         resourceId,
         levelPct,
-        bytes,
+        bytes: batched(bytes, batchSize, framingFor(radio.id).wick),
         radioId: radio.id,
         batchSize,
       });

@@ -30,7 +30,7 @@ const STATUS_OPTIONS = [
 
 const NEED_OPTIONS = [
   "help", "water", "food", "medical", "shelter", "power",
-  "signal", "radio", "phone", "battery", "transport",
+  "signal", "radio", "phone", "battery",
 ];
 
 const PRESETS = [
@@ -217,7 +217,7 @@ function paint(refs, measurement) {
   /* legend ------------------------------------------------------------ */
   const totals = new Map();
   for (const field of measurement.fields) {
-    const bytes = Math.max(1, field.to - field.from);
+    const bytes = (field.toBit - field.fromBit) / 8;
     totals.set(field.group, (totals.get(field.group) || 0) + bytes);
   }
   refs.legend.innerHTML = [...totals.entries()]
@@ -249,7 +249,7 @@ function paint(refs, measurement) {
     radioId,
     batchSize: state.batchSize || 1,
   });
-  const saved = 1 - measurement.size / Math.max(1, na.total);
+  const saved = 1 - perMessage / Math.max(1, batched(na.payload, state.batchSize || 1, framing.naive));
   const coverage = message.type === "sitrep" ? dictionaryCoverage(message.text || "") : null;
 
   refs.metrics.innerHTML = [

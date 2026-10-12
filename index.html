@@ -169,7 +169,7 @@
       <p class="hero__title" data-reveal data-i18n="hero.title">Communication for when almost nothing is left.</p>
       <p class="hero__lead" data-reveal data-i18n="hero.lead">…</p>
       <div class="hero__cta" data-reveal>
-        <a class="btn btn--ember" href="#codec">
+        <a class="btn btn--ember" href="#offline">
           <span class="btn__dot" aria-hidden="true"></span>
           <span data-i18n="hero.cta1">Open the codec bench</span>
           <svg width="14" height="14" aria-hidden="true"><use href="#i-arrow"/></svg>
@@ -576,14 +576,23 @@
           <span class="mono device__rtt" id="dev-rtt"></span>
         </div>
 
+        <div class="device__quick chips" id="off-presets" role="group" aria-label="Message templates">
+          <button class="chip" type="button" data-compose="safe" data-i18n="c4.quick.safe">Check in</button>
+          <button class="chip" type="button" data-compose="water" data-i18n="c4.quick.water">Need water</button>
+          <button class="chip" type="button" data-compose="help" data-i18n="c4.quick.help">Need help</button>
+        </div>
         <form class="device__compose" id="off-form">
           <label class="visually-hidden" for="off-input" data-i18n="c4.compose">Compose</label>
-          <input class="input" id="off-input" type="text" maxlength="80" data-i18n-placeholder="c4.placeholder" autocomplete="off" />
+          <textarea class="input" id="off-input" rows="3" maxlength="500" data-i18n-placeholder="c4.placeholder" autocomplete="off" aria-describedby="off-error"></textarea>
+          <label class="off-priority"><span data-i18n="c4.priority">Priority</span>
+            <select id="off-priority" class="input"><option value="1" data-i18n="c4.normal">Normal</option><option value="3" data-i18n="c4.urgent">Urgent</option></select>
+          </label>
           <button class="btn btn--ember btn--sm" type="submit">
             <svg width="13" height="13" aria-hidden="true"><use href="#i-send"/></svg>
             <span data-i18n="c4.queue">Queue it</span>
           </button>
         </form>
+        <p class="hint off-error" id="off-error" role="alert"></p>
 
         <div class="device__list" id="off-list" role="log" aria-live="polite"></div>
 
@@ -597,6 +606,15 @@
         <div class="panel">
           <div class="panel__head"><span class="panel__title" data-i18n="c4.link">Link</span></div>
           <div class="panel__body">
+            <label class="field"><span class="field__k" data-i18n="c4.mode">Delivery mode</span>
+              <select class="input" id="off-mode"><option value="simulated" data-i18n="c4.simulation">Link simulation</option><option value="relay" data-i18n="c4.relayMode">Real LAN relay</option></select>
+            </label>
+            <div id="off-relay-controls" hidden>
+              <label class="field" for="off-room"><span class="field__k" data-i18n="c4.room">Shared room code</span><input class="input mono" id="off-room" minlength="16" maxlength="80" autocomplete="off" spellcheck="false" /></label>
+              <button class="btn" type="button" id="off-connect" data-i18n="c4.connect">Connect</button>
+              <p class="hint" id="off-relay-status" role="status"></p>
+              <p class="hint" data-i18n="c4.relayHelp">Run the local demo server. Connect a second device with the same room code.</p>
+            </div>
             <div class="seg seg--wrap" id="off-links" role="group" aria-label="Link"></div>
             <div class="offline__actions">
               <button class="btn" type="button" id="off-send">
@@ -609,6 +627,7 @@
               </button>
             </div>
             <p class="hint" id="off-hint" data-i18n="c4.nothing">…</p>
+            <p class="hint" data-i18n="c4.boundary">Simulation is not delivery. The relay confirms only after a peer stores and decodes a frame.</p>
           </div>
         </div>
 
@@ -621,6 +640,11 @@
               <li><span class="statuslist__k" data-i18n="c4.store">local store</span><span class="statuslist__v mono" id="off-store">—</span></li>
             </ul>
           </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel__head"><span class="panel__title" data-i18n="c4.inboxTitle">Received on this device</span></div>
+          <div class="panel__body" id="off-inbox" role="log" aria-live="polite"></div>
         </div>
       </div>
     </div>

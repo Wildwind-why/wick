@@ -110,7 +110,7 @@ export function run(scenario, { mode = "wick", bytes = 12, naiveBytes = 340 } = 
   const framing = mode === "wick" ? framingFor(scenario.radioId).wick : framingFor(scenario.radioId).naive;
 
   let chargeJ = resource.capacityJ * (scenario.levelPct / 100);
-  const standbyPerMinute = (resource.standbyW * 60) / 60;
+  const standbyPerMinute = resource.standbyW * 60;
 
   let queued = 0;
   let delivered = 0;

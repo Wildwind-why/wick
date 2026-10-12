@@ -75,9 +75,10 @@ export const ESCAPE = 63;
 export const SYMBOL_BITS = 6;
 
 export function encodeSymbol(ch) {
+  if (ch.length !== 1 || ch.charCodeAt(0) > 255) throw new RangeError("encodeSymbol expects a UTF-8 byte");
   const direct = TEXT_ALPHABET.get(ch);
   if (direct !== undefined) return { symbol: direct, escaped: false };
-  return { symbol: ESCAPE, escaped: true, raw: ch.charCodeAt(0) & 0xff };
+  return { symbol: ESCAPE, escaped: true, raw: ch.charCodeAt(0) };
 }
 
 export function decodeSymbol(symbol, reader) {

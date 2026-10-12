@@ -141,7 +141,7 @@ await mount("offline", () => mountWithin(initOffline, CAPTURE_BOOT ? 60000 : 800
 // finishes, and a snapshot would report the state of the page at mount time
 // rather than the state of the page now.
 window.__wick = {
-  version: "2.0",
+  version: "2.1",
   get failures() {
     return failures;
   },

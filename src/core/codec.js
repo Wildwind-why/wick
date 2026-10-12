@@ -1,7 +1,7 @@
 /**
  * codec.js — wick's wire format.
  *
- * Wire layout (v1)
+ * Wire layout (v2; decoding retains v1 compatibility)
  *   1 byte   header    version:2 | type:3 | hasPosition:1 | hasTime:1 | rsvd:1
  *   n bytes  body      depends on type
  *   1 byte   crc8      CRC-8/SMBUS over every preceding byte
@@ -9,7 +9,7 @@
  * Bodies
  *   CHECK_IN  statusToken:7                       [+ position] [+ time]
  *   NEED      needToken:7, urgency:2              [+ position] [+ time]
- *   SITREP    7-bit symbol stream, terminated by the CRC byte
+ *   SITREP    7-bit token stream; literal runs carry UTF-8 bytes, then EOF
  *   ACK       ackedSequence:varint
  *   BEACON    position, time
  *
@@ -49,7 +49,10 @@ import {
   TEXT_ALPHABET,
 } from "./dictionary.js";
 
-export const VERSION = 1;
+export const VERSION = 2;
+export const MAX_TEXT_BYTES = 2048;
+const utf8 = new TextEncoder();
+const utf8Reader = new TextDecoder("utf-8", { fatal: true });
 
 export const TYPES = {
   checkin: 0,
@@ -88,15 +91,15 @@ class FieldWriter {
   }
 
   field(key, label, group, fn) {
-    const from = this.w.length;
+    const fromBit = this.w.bytes.length * 8 + this.w.bitLen;
     fn(this.w);
-    const to = this.w.length;
-    this.fields.push({ key, label, group, from, to: Math.max(to, from + 1) });
+    const toBit = this.w.bytes.length * 8 + this.w.bitLen;
+    this.fields.push({ key, label, group, from: Math.floor(fromBit / 8), to: Math.ceil(toBit / 8), fromBit, toBit });
     return this;
   }
 
   finish() {
-    this.w.align();
+    if (this.w.bitLen) this.field("padding", "padding", FIELD_GROUP.header, w => w.align());
     const body = Uint8Array.from(this.w.bytes);
     const checksum = crc8(body);
     const out = new Uint8Array(body.length + 1);
@@ -108,6 +111,8 @@ class FieldWriter {
       group: FIELD_GROUP.integrity,
       from: body.length,
       to: body.length + 1,
+      fromBit: body.length * 8,
+      toBit: (body.length + 1) * 8,
     });
     return { bytes: out, fields: this.fields };
   }
@@ -122,10 +127,11 @@ const ALNUM = /[a-z0-9]/;
 /**
  * Split free text into dictionary tokens and literal runs.
  * Boundaries are enforced on both sides so "sand" never becomes "s"+"and".
- * Tokens are stored lowercase; wick deliberately normalises emergency text.
+ * Exact lowercase words can use tokens; all other text remains unchanged.
  */
 export function tokenise(text) {
-  const lower = text.toLowerCase();
+  // Only exact lowercase words use tokens; names, whitespace and Unicode stay exact.
+  const lower = text;
   const items = [];
   let literal = "";
   let i = 0;
@@ -163,7 +169,7 @@ export function tokenise(text) {
 
 /** Comparable form used by the round-trip check. */
 export function normalise(text) {
-  return text.toLowerCase().replace(/\s+/g, " ").trim();
+  return String(text);
 }
 
 /* ------------------------------------------------------------------------ */
@@ -180,6 +186,10 @@ export function normalise(text) {
 export function encode(message, context = {}) {
   const type = TYPES[message.type];
   if (type === undefined) throw new CodecError(`unknown type: ${message.type}`);
+  if (message.type === "sitrep" && utf8.encode(message.text || "").length > MAX_TEXT_BYTES) throw new CodecError(`text exceeds ${MAX_TEXT_BYTES} UTF-8 bytes`);
+  for (const position of [message.position, context.origin]) {
+    if (position && (!Number.isFinite(position.lat) || !Number.isFinite(position.lon) || Math.abs(position.lat) > 90 || Math.abs(position.lon) > 180)) throw new CodecError("invalid coordinates");
+  }
 
   const hasPosition = !!message.position;
   const hasTime = Number.isFinite(message.time);
@@ -229,7 +239,8 @@ export function encode(message, context = {}) {
           fw.field(`text${index}`, `"${item.text}"`, FIELD_GROUP.text, (w) => {
             w.writeBits(TOKEN_LITERAL, 7);
             const symbols = [];
-            for (const ch of item.text) {
+            for (const byte of utf8.encode(item.text)) {
+              const ch = String.fromCharCode(byte);
               const { symbol, escaped, raw } = encodeSymbol(ch);
               symbols.push({ symbol, escaped, raw });
             }
@@ -261,8 +272,8 @@ export function encode(message, context = {}) {
   if (hasPosition) {
     const origin = context.origin || { lat: 0, lon: 0 };
     // No shared origin yet? Promote this fix to the origin and send it absolute.
-    const dLat = quantise(message.position.lat - origin.lat);
-    const dLon = quantise(message.position.lon - origin.lon);
+    const dLat = quantise(message.position.lat) - quantise(origin.lat);
+    const dLon = quantise(message.position.lon) - quantise(origin.lon);
     fw.field("position", `position · Δ${dLat},${dLon}`, FIELD_GROUP.position, (w) => {
       writeZigzagVarint(w, dLat);
       writeZigzagVarint(w, dLon);
@@ -307,7 +318,7 @@ function decodeInner(bytes, context = {}) {
 
   const r = new BitReader(bytes.subarray(0, bodyLen));
   const version = r.readBits(2);
-  if (version !== VERSION) throw new CodecError(`unsupported version ${version}`);
+  if (version !== VERSION && version !== 1) throw new CodecError(`unsupported version ${version}`);
   const type = r.readBits(3);
   const hasPosition = r.readBits(1) === 1;
   const hasTime = r.readBits(1) === 1;
@@ -320,12 +331,14 @@ function decodeInner(bytes, context = {}) {
   switch (name) {
     case "checkin": {
       const code = r.readBits(7);
-      message.status = CODE_TO_WORD.get(code) ?? "ok";
+      if (!CODE_TO_WORD.has(code)) throw new CodecError("unknown status token");
+      message.status = CODE_TO_WORD.get(code);
       break;
     }
     case "need": {
       const code = r.readBits(7);
-      message.need = CODE_TO_WORD.get(code) ?? "help";
+      if (!CODE_TO_WORD.has(code)) throw new CodecError("unknown need token");
+      message.need = CODE_TO_WORD.get(code);
       message.urgency = r.readBits(2);
       break;
     }
@@ -336,10 +349,15 @@ function decodeInner(bytes, context = {}) {
         if (code === TOKEN_EOF) break;
         if (code === TOKEN_LITERAL) {
           const count = readVarint(r);
+          if (count > MAX_TEXT_BYTES) throw new CodecError("literal too long");
+          const literal = [];
           for (let i = 0; i < count; i++) {
             const symbol = r.readBits(SYMBOL_BITS);
-            text += decodeSymbol(symbol, r);
+            const ch = decodeSymbol(symbol, r);
+            if (ch === undefined) throw new CodecError("unknown literal symbol");
+            literal.push(ch.charCodeAt(0));
           }
+          text += version === 1 ? String.fromCharCode(...literal) : utf8Reader.decode(Uint8Array.from(literal));
         } else {
           text += CODE_TO_WORD.get(code) ?? "?";
         }
@@ -410,7 +428,7 @@ function payloadRatio(fields) {
   let payload = 0;
   let total = 0;
   for (const f of fields) {
-    const len = f.to - f.from;
+    const len = (f.toBit - f.fromBit) / 8;
     total += len;
     if (f.group !== FIELD_GROUP.header && f.group !== FIELD_GROUP.integrity) {
       payload += len;
@@ -421,6 +439,9 @@ function payloadRatio(fields) {
 
 export function roundTrips(original, decoded) {
   if (original.type !== decoded.type) return false;
+  if (Boolean(original.position) !== Boolean(decoded.position)) return false;
+  if (original.position && (Math.abs(original.position.lat - decoded.position.lat) > 0.000051 || Math.abs(original.position.lon - decoded.position.lon) > 0.000051)) return false;
+  if (Number.isFinite(original.time) && original.time !== decoded.time) return false;
   if (original.type === "sitrep") {
     return normalise(original.text || "") === normalise(decoded.text || "");
   }

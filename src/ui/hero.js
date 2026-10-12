@@ -140,7 +140,7 @@ function startEmber(canvas) {
     canvas.width = Math.round(width * dpr);
     canvas.height = Math.round(height * dpr);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    if (reduced) draw(phase);
+    if (reduced || getMode() === "eco") draw(phase);
   };
   resize();
   window.addEventListener("resize", resize, { passive: true });
@@ -169,6 +169,7 @@ function startEmber(canvas) {
      scheduler changes with the mode. */
   const startAnim = () => {
     stopAnim();
+    if (document.hidden || getMode() === "eco") return;
     const tick = () => {
       frame += 1;
       const q = QUALITY[getMode()] || QUALITY.full;
@@ -176,11 +177,9 @@ function startEmber(canvas) {
         phase += 0.016 * q.stride;
         draw(phase);
       }
-      if (getMode() === "eco") timeoutId = setTimeout(tick, 50);
-      else rafId = requestAnimationFrame(tick);
+      rafId = requestAnimationFrame(tick);
     };
-    if (getMode() === "eco") timeoutId = setTimeout(tick, 50);
-    else rafId = requestAnimationFrame(tick);
+    rafId = requestAnimationFrame(tick);
   };
 
   startAnim();

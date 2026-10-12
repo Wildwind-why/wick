@@ -219,11 +219,11 @@ check("every radio is modelled", () => {
 });
 
 /* ---- budget ----------------------------------------------------------- */
-check("1% mode shrinks the frame", () => {
+check("1% mode preserves the complete message", () => {
   const message = { type: "sitrep", text: "water", position: origin, time: 1760000042 };
   const full = compare({ message, context: fullContext, eco: false, radioId: "lora" });
   const eco = compare({ message, context: fullContext, eco: true, radioId: "lora" });
-  if (!(eco.wick.size < full.wick.size)) throw new Error(`${eco.wick.size} !< ${full.wick.size}`);
+  if (eco.wick.size !== full.wick.size || JSON.stringify(eco.plan) !== JSON.stringify(full.plan) || eco.dropped.length) throw new Error("eco removed information");
   return `${full.wick.size} B → ${eco.wick.size} B`;
 });
 
@@ -403,10 +403,10 @@ check("a sealed frame is unreadable without the key", () => {
 check("sealing still beats the chat envelope it replaces", () => {
   const measurement = measure({ type: "checkin", status: "safe", position: origin, time: 1760000042 }, fullContext);
   const wire = sealFrame(measurement.bytes, SESSION_KEY, { sessionTag: SESSION_TAG, counter: 0n });
-  const naive = naiveWire({ type: "checkin", status: "safe" }, "lte");
-  const ratio = naive.length / wire.length;
-  if (ratio < 5) throw new Error(`only ${ratio.toFixed(1)}× smaller than ${naive.length} B`);
-  return `${wire.length} B sealed vs ${naive.length} B plain chat (${ratio.toFixed(1)}×)`;
+  const naive = naiveWire({ type: "checkin", status: "safe", position: origin, time: 1760000042 }, "lte");
+  const ratio = naive.payload / wire.length;
+  if (!Number.isFinite(ratio) || ratio < 5) throw new Error(`invalid ratio ${ratio}`);
+  return `${wire.length} B sealed frame vs ${naive.payload} B constructed JSON payload (${ratio.toFixed(1)}×); framing excluded`;
 });
 
 const summary = document.getElementById("summary");

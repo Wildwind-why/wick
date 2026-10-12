@@ -10,8 +10,8 @@
  */
 
 const DB_NAME = "wick";
-const DB_VERSION = 1;
-export const STORES = ["outbox", "archive", "ledger", "meta"];
+const DB_VERSION = 2;
+export const STORES = ["outbox", "archive", "ledger", "meta", "inbox"];
 
 function promisify(request) {
   return new Promise((resolve, reject) => {
@@ -41,6 +41,12 @@ class MemoryStore {
   async clear(store) {
     this.maps.get(store).clear();
   }
+  async complete(items) {
+    for (const item of items) {
+      this.maps.get("archive").set(item.id, structuredClone(item));
+      this.maps.get("outbox").delete(item.id);
+    }
+  }
 }
 
 class IdbStore {
@@ -52,7 +58,13 @@ class IdbStore {
     return this.db.transaction(store, mode).objectStore(store);
   }
   async put(store, value, key = value.id) {
-    await promisify(this.#tx(store, "readwrite").put(value, key));
+    await new Promise((resolve, reject) => {
+      const tx = this.db.transaction(store, "readwrite");
+      tx.oncomplete = resolve;
+      tx.onerror = () => reject(tx.error || new Error("write failed"));
+      tx.onabort = () => reject(tx.error || new Error("write aborted"));
+      tx.objectStore(store).put(value, key);
+    });
     return key;
   }
   async get(store, key) {
@@ -66,6 +78,18 @@ class IdbStore {
   }
   async clear(store) {
     await promisify(this.#tx(store, "readwrite").clear());
+  }
+  async complete(items) {
+    await new Promise((resolve, reject) => {
+      const tx = this.db.transaction(["outbox", "archive"], "readwrite");
+      tx.oncomplete = resolve;
+      tx.onerror = () => reject(tx.error || new Error("archive transaction failed"));
+      tx.onabort = () => reject(tx.error || new Error("archive transaction aborted"));
+      for (const item of items) {
+        tx.objectStore("archive").put(item, item.id);
+        tx.objectStore("outbox").delete(item.id);
+      }
+    });
   }
 }
 

@@ -52,7 +52,7 @@ export function initCraft() {
         `<caption class="visually-hidden">Measured payload sizes, gzip</caption>` +
         `<thead><tr><th>asset</th><th>raw</th><th>gzip</th><th>share</th></tr></thead>` +
         `<tbody>${rows}` +
-        `<tr class="is-total"><td>critical path total</td><td>${nf(
+        `<tr class="is-total"><td>measured file inventory</td><td>${nf(
           MEASURED.totalRaw,
         )} B</td><td>${nf(MEASURED.totalGzip)} B</td><td>100%</td></tr></tbody>`;
     }

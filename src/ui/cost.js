@@ -66,7 +66,7 @@ export function initCost() {
     const wickParts = [];
     for (const field of measurement.fields) {
       const existing = wickParts.find((p) => p.key === field.group);
-      const bytes = field.to - field.from;
+      const bytes = (field.toBit - field.fromBit) / 8;
       if (existing) existing.bytes += bytes;
       else
         wickParts.push({

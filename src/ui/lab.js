@@ -57,7 +57,7 @@ export function initLab() {
     .join("");
 
   refs.trim.innerHTML = ECO_TRIMMING.map(
-    (item) => `<li><b>${escapeHtml(item.label)}</b><em>${escapeHtml(item.reason)}</em></li>`,
+    (item) => `<li><b>${escapeHtml(t(item.label))}</b><em>${escapeHtml(t(item.reason))}</em></li>`,
   ).join("");
 
   on(refs.resources, "click", "[data-resource]", (_, el) =>
@@ -144,7 +144,11 @@ export function initLab() {
   };
 
   onState((_, source) => {
-    if (source === "lab") return;
+    if (source === "saved") return;
+    render();
+  });
+  document.addEventListener("wick:lang", () => {
+    refs.trim.innerHTML = ECO_TRIMMING.map(item => `<li><b>${escapeHtml(t(item.label))}</b><em>${escapeHtml(t(item.reason))}</em></li>`).join("");
     render();
   });
   render();
@@ -154,7 +158,7 @@ function paintRank(refs, result) {
   const ranked = rankRadios({
     // Same byte basis as the headline readout: per-message bytes with framing
     // already amortised across the batch, and the fixed cost amortised here.
-    bytes: Math.max(2, result.wick.batchedBytes),
+    bytes: result.wick.size,
     resourceId: state.resourceId,
     levelPct: state.levelPct,
     batchSize: state.batchSize,

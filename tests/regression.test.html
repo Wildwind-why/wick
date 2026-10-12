@@ -1,0 +1,123 @@
+<!doctype html><meta charset="utf-8"><title>wick · regression tests</title>
+<style>body{background:#111;color:#eee;font:14px/1.6 monospace;padding:30px}.fail{color:#ff8080}.ok{color:#7fe5ab}</style>
+<h1>wick 2.1 · correctness regressions</h1><div id="out"></div><p id="summary">running…</p>
+<script type="module">
+import { measure, decode, encode, roundTrips, MAX_TEXT_BYTES } from '../src/core/codec.js';
+import { compare, planMessage, rankRadios } from '../src/core/budget.js';
+import { run, SCENARIOS } from '../src/core/sim.js';
+import { RESOURCES, energyPerMessage } from '../src/core/energy.js';
+import { Outbox, LINKS, composeText, delay } from '../src/core/sync.js';
+const rows = document.getElementById('out'); let pass = 0, fail = 0;
+const assert = (ok, message = 'assertion failed') => { if (!ok) throw new Error(message); };
+async function test(name, fn) {
+  const row = document.createElement('p');
+  try { await fn(); row.className = 'ok'; row.textContent = 'PASS ' + name; pass++; }
+  catch (e) { row.className = 'fail'; row.textContent = 'FAIL ' + name + ': ' + e.message; fail++; }
+  rows.append(row);
+}
+function fixture() {
+  const maps = { outbox: new Map(), archive: new Map() };
+  return {
+    maps, put: async (s,i) => maps[s].set(i.id, structuredClone(i)),
+    all: async s => [...maps[s].values()].map(i => structuredClone(i)),
+    remove: async (s,id) => maps[s].delete(id),
+    complete: async items => { for (const i of items) { maps.archive.set(i.id, structuredClone(i)); maps.outbox.delete(i.id); } },
+  };
+}
+const instant = { mode: 'simulated', send: async batch => ({ acknowledged: batch.map(i => i.id) }) };
+for (const text of ['我被困了，需要救援', 'SOS', 'help', 'not safe', 'no water', 'trapped 12 children', '🚨 12 人 / 3 children', 'İstanbul Ødegård 张三', '  Two\n lines\tKEEP case  ']) {
+  await test('exact compose + Unicode round trip: ' + text, () => {
+    const input = composeText(text); const m = measure(input);
+    assert(input.type === 'sitrep' && m.ok && m.decoded.text === text);
+  });
+}
+await test('eco preserves negation, count, position and timestamp', () => {
+  const message = { type:'sitrep', text:'not safe, trapped 12 children', position:{lat:31.23045,lon:121.47376}, time:1760000042 };
+  const r = planMessage(message, {}, true);
+  assert(r.plan.text === message.text && r.plan.position.lat === message.position.lat && r.plan.time === message.time && !r.dropped.length && r.wick.ok);
+});
+await test('round-trip rejects lost location/time even when text matches', () => {
+  assert(!roundTrips({type:'sitrep',text:'safe',time:100},{type:'sitrep',text:'safe',time:99}));
+  assert(!roundTrips({type:'sitrep',text:'safe',position:{lat:1,lon:2}},{type:'sitrep',text:'safe'}));
+});
+await test('field receipts sum exactly to frame bytes', () => {
+  for (const message of [{type:'checkin',status:'safe'}, {type:'need',need:'water',urgency:3}, composeText('12 人 need water 🚨')]) {
+    const m = measure(message); assert(m.fields.reduce((s,f) => s + (f.toBit-f.fromBit)/8,0) === m.size);
+  }
+});
+await test('oversized text and invalid coordinates rejected', () => {
+  for (const message of [composeText('x'.repeat(MAX_TEXT_BYTES+1)),{type:'beacon',position:{lat:91,lon:0}}]) {
+    let rejected=false; try { encode(message); } catch { rejected=true; } assert(rejected);
+  }
+});
+const context={origin:{lat:31.2304,lon:121.4737},prevTime:1760000000};
+const message={type:'checkin',status:'safe',position:context.origin,time:1760000042};
+await test('baseline framing charged once per transmission', () => {
+  const one=compare({message,context,batchSize:1}),eight=compare({message,context,batchSize:8});
+  assert(one.naive.batchedBytes===354); assert(eight.naive.batchedBytes===266.5);
+  assert(eight.wick.batchedBytes===13.625);
+  assert(eight.bytesSavedPerMessage===266.5-13.625);
+});
+await test('each ranked radio uses its own framing', () => {
+  const entries=rankRadios({bytes:6,resourceId:'phone',levelPct:1});
+  const ble=entries.find(e=>e.radio.id==='ble'),lte=entries.find(e=>e.radio.id==='lte');
+  assert(ble.perMessageJ===energyPerMessage({radioId:'ble',bytes:6}).total);
+  assert(lte.perMessageJ===energyPerMessage({radioId:'lte',bytes:67}).total);
+});
+await test('standby-only duration agrees with joules / watts', () => {
+  const r=run({...SCENARIOS.last1,messagesPerHour:0});
+  const expected=RESOURCES.phone.capacityJ*.01/RESOURCES.phone.standbyW/3600;
+  assert(Math.abs(r.summary.aliveHours-expected)<=1/60); assert(r.summary.delivered===0);
+  assert(Math.abs(r.summary.spentJ+r.summary.remainingJ-399.6)<1e-6);
+});
+await test('25 messages drain in 3 batches and stay removed on reload', async () => {
+  const store=fixture(),outbox=new Outbox(store);
+  for(let i=0;i<25;i++) await outbox.enqueue(composeText('求助 '+i));
+  const r=await outbox.flush(LINKS.good,instant);
+  assert(r.simulated===25 && r.sent===0 && r.transmissions===3 && outbox.items.length===0);
+  const restored=new Outbox(store); await restored.hydrate();
+  assert(restored.items.length===0 && restored.simulated===25 && restored.sent===0);
+});
+await test('urgent messages lead the next batch', async () => {
+  const outbox=new Outbox(fixture());
+  await outbox.enqueue(composeText('normal')); const urgent=await outbox.enqueue(composeText('urgent'),{priority:3});
+  let first;
+  await outbox.flush(LINKS.good,{...instant,send:async batch=>{first=batch[0].id;return{acknowledged:batch.map(i=>i.id)}}});
+  assert(first===urgent.id);
+});
+await test('concurrent flushes never double-send a batch', async () => {
+  const outbox=new Outbox(fixture()); await outbox.enqueue(composeText('safe')); let calls=0;
+  const transport={...instant,send:async batch=>{calls++;await delay(20);return{acknowledged:batch.map(i=>i.id)}}};
+  await Promise.all([outbox.flush(LINKS.good,transport),outbox.flush(LINKS.good,transport)]);
+  assert(calls===1 && outbox.simulated===1);
+});
+await test('partial ACK only archives acknowledged messages', async () => {
+  const store=fixture(),outbox=new Outbox(store);
+  await outbox.enqueue(composeText('one'));await outbox.enqueue(composeText('two'));
+  await outbox.flush(LINKS.good,{mode:'relay',send:async batch=>({acknowledged:[batch[0].id]})});
+  assert(outbox.sent===1 && outbox.queuedCount===1 && store.maps.archive.size===1);
+  await outbox.flush(LINKS.good,{...instant,mode:'relay'}); assert(outbox.sent===2 && !outbox.items.length);
+});
+await test('interruption retains an unconfirmed message', async () => {
+  const store=fixture(),outbox=new Outbox(store);await outbox.enqueue(composeText('need help'));
+  const transport={mode:'relay',send:async(batch,{signal})=>{await delay(100,signal);return{acknowledged:batch.map(i=>i.id)}}};
+  const active=outbox.flush(LINKS.good,transport);setTimeout(()=>outbox.cancel(),10);await active;
+  assert(outbox.sent===0 && outbox.queuedCount===1 && store.maps.archive.size===0);
+});
+await test('crashed sending status is recoverable after reload', async () => {
+  const store=fixture(),outbox=new Outbox(store),item=await outbox.enqueue(composeText('need help'));
+  item.status='sending';await store.put('outbox',item);
+  const restored=new Outbox(store);await restored.hydrate(); assert(restored.queuedCount===1);
+});
+await test('legacy sent records migrate as simulation, never peer ACK', async () => {
+  const store=fixture();await store.put('outbox',{id:'legacy',status:'sent',message:composeText('old'),createdAt:1});
+  const outbox=new Outbox(store);await outbox.hydrate();assert(outbox.sent===0 && outbox.simulated===1 && !outbox.items.length);
+});
+await test('storage failure does not invent an in-memory queued message', async () => {
+  const store=fixture();store.put=async()=>{throw new Error('disk full')};const outbox=new Outbox(store);
+  let failed=false;try{await outbox.enqueue(composeText('SOS'))}catch{failed=true};assert(failed && !outbox.items.length);
+});
+await test('empty input is refused',()=>{let failed=false;try{composeText('   ')}catch{failed=true}assert(failed)});
+document.getElementById('summary').textContent=`${pass} passed · ${fail} failed`;
+window.__WICK_REGRESSION_TESTS__={pass,fail};
+</script>
